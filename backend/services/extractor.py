@@ -424,6 +424,34 @@ def _classify_qualitative(value_text: str) -> ResultStatus:
     return qualitative_status(value_text)
 
 
+def _looks_like_unit(cell: str) -> bool:
+    """True when a cell reads like a unit rather than a value or a word."""
+    text = cell.strip()
+    if not text or len(text) > 16:
+        return False
+    if not _UNIT_TOKEN_RE.match(text):
+        return False
+    # A bare number is a value, not a unit - and "%" is the one exception.
+    if re.fullmatch(NUMBER, text) and text != "%":
+        return False
+    # A full alphabetic word is a flag like "Low"/"Normal", not a unit.
+    if re.fullmatch(r"[A-Za-z]{2,}", text):
+        return False
+    return True
+
+
+def _unit_from_trailing_cell(value_cells: list[str]) -> str | None:
+    """Find a unit cell sitting immediately after the value cell."""
+    for position, cell in enumerate(value_cells):
+        if not re.fullmatch(rf"(?P<num>{NUMBER})", cell.strip()):
+            continue
+        if position + 1 < len(value_cells):
+            following = value_cells[position + 1].strip()
+            if _looks_like_unit(following):
+                return following
+    return None
+
+
 def _extract_candidate_from_line(line: str, page: int) -> _Candidate | None:
     """Parse one report line into a candidate row, or return None."""
     if _looks_like_noise(line):
@@ -467,6 +495,12 @@ def _extract_candidate_from_line(line: str, page: int) -> _Candidate | None:
     value_cells = [cell for i, cell in enumerate(rest) if i != reference_index]
 
     value, value_text, unit, qualitative = _extract_value_and_unit(value_cells)
+
+    # Column-aligned reports put the unit in its own cell ("45" then "%"), so
+    # recover it from the cell right after the value when the inline parse left
+    # it empty.
+    if unit is None and not qualitative and value is not None:
+        unit = _unit_from_trailing_cell(value_cells)
 
     # Flat single-line form: the name cell itself may be "Hemoglobin 10.2 g/dL".
     if value is None and not qualitative:

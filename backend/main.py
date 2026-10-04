@@ -15,11 +15,9 @@ from backend.schemas.report import HealthResponse
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
-settings = get_settings()
-
 app = FastAPI(
-    title=settings.app_name,
-    version=settings.app_version,
+    title=get_settings().app_name,
+    version=get_settings().app_version,
     description=(
         "Uploads a medical test report, extracts the printed facts, validates "
         "them against the reference ranges printed on the report, and explains "
@@ -41,12 +39,17 @@ app.include_router(reports_router, prefix="/api")
 
 @app.get("/api/health", response_model=HealthResponse, tags=["meta"])
 def health() -> HealthResponse:
-    """Liveness probe plus a flag telling the UI whether AI is configured."""
+    """Liveness probe plus a flag telling the UI whether AI is configured.
+
+    Settings are read per request so an environment change is picked up without
+    a restart, and so no configuration value is captured in the module scope.
+    """
+    current = get_settings()
     return HealthResponse(
         status="ok",
-        app=settings.app_name,
-        version=settings.app_version,
-        ai_configured=settings.has_gemini_key,
-        max_upload_size_mb=settings.max_upload_size_mb,
+        app=current.app_name,
+        version=current.app_version,
+        ai_configured=current.has_gemini_key,
+        max_upload_size_mb=current.max_upload_size_mb,
         supported_types=["pdf", "jpg", "jpeg", "png"],
     )

@@ -10,6 +10,7 @@ Strategy:
 from __future__ import annotations
 
 import io
+import re
 from dataclasses import dataclass, field
 
 import fitz  # PyMuPDF
@@ -17,8 +18,13 @@ import fitz  # PyMuPDF
 from backend.schemas.report import DocumentKind, PageText
 from backend.services import ocr
 
-#: Below this many characters a page is treated as a scanned image.
-TEXT_LAYER_CHAR_THRESHOLD = 40
+#: A page needs only a little selectable text to skip OCR. This is deliberately
+#: low: a page holding a single test row is short but is still a text PDF, and
+#: sending it to OCR would be slower and less accurate for no reason.
+TEXT_LAYER_CHAR_THRESHOLD = 12
+
+#: A page with no letters or digits at all carries no extractable information.
+_ALNUM_RE = re.compile(r"[A-Za-z0-9\u0980-\u09FF]")
 
 
 class PdfProcessingError(Exception):
@@ -81,7 +87,12 @@ def extract_pdf(path: str, ocr_scanned_pages: bool = True) -> PdfResult:
 
             cleaned = _clean_page_text(text)
 
-            if len(cleaned) >= TEXT_LAYER_CHAR_THRESHOLD:
+            # A page with a real text layer skips OCR entirely.
+            has_text = (
+                len(cleaned) >= TEXT_LAYER_CHAR_THRESHOLD
+                and bool(_ALNUM_RE.search(cleaned))
+            )
+            if has_text:
                 result.pages.append(
                     PageText(page=page_number, text=cleaned, ocr_used=False)
                 )

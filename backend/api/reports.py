@@ -16,6 +16,8 @@ import logging
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
+import fitz  # PyMuPDF
+
 from backend.config import get_settings
 from backend.schemas.report import (
     AnalyzeResponse,
@@ -63,23 +65,24 @@ async def upload_report(file: UploadFile = File(...)) -> UploadResponse:
     except file_handler.UploadError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    # A PDF that cannot be parsed is rejected now rather than after upload, so
-    # the user finds out immediately instead of on the results screen.
+    # A PDF we cannot open is rejected now rather than after upload, so the
+    # user finds out immediately instead of on the results screen.
     if upload.extension == ".pdf":
         try:
-            if pdf_processor.pdf_page_count(str(upload.path)) == 0:
-                raise HTTPException(
-                    status_code=400,
-                    detail="PDF ফাইলটি পড়া যায়নি। ফাইলটি ক্ষতিগ্রস্ত হতে পারে।",
-                )
+            with fitz.open(str(upload.path)) as document:
+                if document.needs_pass:
+                    upload.cleanup()
+                    raise HTTPException(
+                        status_code=400,
+                        detail="এই PDF ফাইলটি পাসওয়ার্ড সুরক্ষিত। আনফলকড PDF দিন।",
+                    )
         except HTTPException:
-            upload.cleanup()
             raise
         except Exception:
             upload.cleanup()
             raise HTTPException(
                 status_code=400,
-                detail="PDF ফাইলটি পড়া যায়নি। অন্য একটি ফাইল ব্যবহার করুন।",
+                detail="PDF ফাইলটি পড়া যায়নি। ফাইলটি ক্ষতিগ্রস্ত হতে পারে।",
             ) from None
 
     store.put(
@@ -145,6 +148,7 @@ async def analyze_report(payload: AnalyzeRequest) -> AnalyzeResponse:
         counts=analyzed.counts,
         summary=analyzed.summary,
         groups=analyzed.groups,
+        results=analyzed.results,
         explanations=analyzed.explanations,
         validation=analyzed.validation,
         ai_enabled=analyzed.ai_enabled,
@@ -166,6 +170,7 @@ async def get_report(report_id: str) -> AnalyzeResponse:
         counts=record.counts,
         summary=record.summary,
         groups=record.groups,
+        results=record.results,
         explanations=record.explanations,
         validation=record.validation,
         ai_enabled=record.ai_enabled,

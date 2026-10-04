@@ -193,6 +193,9 @@ class AnalyzeResponse(BaseModel):
     counts: Counts
     summary: ReportSummary
     groups: dict[str, list[TestResult]]
+    #: Every extracted result in reading order, for clients that prefer a flat
+    #: list over the three display groups.
+    results: list[TestResult] = Field(default_factory=list)
     explanations: list[ExplanationBlock]
     validation: ValidationReport
     ai_enabled: bool

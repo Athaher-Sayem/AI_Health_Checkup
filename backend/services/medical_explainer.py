@@ -238,7 +238,11 @@ def detect_contradictions(
     Returns ``(messages, has_contradiction)``. The deterministic result always
     wins; the caller uses the flag to decide whether to regenerate.
     """
-    by_name = {item.test_name.strip().lower(): item for item in parsed}
+    by_name = {
+        str(item.get("test_name", "")).strip().lower(): item
+        for item in parsed
+        if isinstance(item, dict)
+    }
 
     messages: list[str] = []
     for result in results:

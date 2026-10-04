@@ -47,7 +47,9 @@ def sanitize_filename(filename: str | None) -> str:
 def detect_extension(filename: str, head: bytes) -> str:
     """Return the canonical extension, verifying the extension matches content.
 
-    Guards against someone uploading ``report.exe`` renamed to ``report.pdf``.
+    Raises :class:`UploadError` when the extension is unsupported, when the
+    content contradicts the extension (a zip named ``.pdf``), or when neither
+    the name nor the bytes identify a format we can read.
     """
     ext = Path(sanitize_filename(filename)).suffix.lower()
     if ext not in SUPPORTED_EXTENSIONS:
@@ -56,16 +58,19 @@ def detect_extension(filename: str, head: bytes) -> str:
         )
 
     for signature, kind in _MAGIC:
-        if head.startswith(signature):
-            real_ext = "." + kind
-            if real_ext == ".jpg" and ext in {".jpg", ".jpeg"}:
-                return ext
-            if real_ext != ext:
-                raise UploadError(
-                    "ফাইলের নাম এবং ফাইলের আসল ধরন মিলছে না। সঠিক ফাইল আবার দেখুন।"
-                )
-            return ext
+        if not head.startswith(signature):
+            continue
 
+        real_ext = "." + kind
+        if real_ext == ".jpg" and ext in {".jpg", ".jpeg"}:
+            return ext
+        if real_ext != ext:
+            raise UploadError(
+                "ফাইলের নাম এবং ফাইলের আসল ধরন মিলছে না। সঠিক ফাইল আবার দেখুন।"
+            )
+        return ext
+
+    # No magic byte matched: an unreadable or deliberately disguised file.
     raise UploadError("ফাইলটি পড়া যায়নি বা ক্ষতিগ্রস্ত। অন্য একটি ফাইল ব্যবহার করুন।")
 
 
