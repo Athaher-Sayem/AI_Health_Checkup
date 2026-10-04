@@ -153,6 +153,23 @@ def save_upload(filename: str, data: bytes) -> TempUpload:
     )
 
 
+def temp_path_for(report_id: str) -> Path:
+    """Locate the temp file for ``report_id`` across the supported extensions.
+
+    Returns a non-existent path when nothing matches, so callers hit their
+    "file no longer available" branch instead of reading a different file.
+    """
+    if not report_id.isalnum():
+        raise UploadError("অবৈধ রিপোর্ট আইডি।")
+
+    root = _temp_root()
+    for extension in sorted(SUPPORTED_EXTENSIONS):
+        candidate = root / f"{report_id}{extension}"
+        if candidate.exists():
+            return candidate
+    return root / report_id
+
+
 def purge_all_temp_files() -> None:
     """Remove every temp upload. Used on shutdown and by tests."""
     shutil.rmtree(_temp_root(), ignore_errors=True)
