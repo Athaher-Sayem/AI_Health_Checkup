@@ -14,8 +14,8 @@ from dataclasses import dataclass, field
 
 import fitz  # PyMuPDF
 
-from schemas.report import DocumentKind, PageText
-from services import ocr
+from backend.schemas.report import DocumentKind, PageText
+from backend.services import ocr
 
 #: Below this many characters a page is treated as a scanned image.
 TEXT_LAYER_CHAR_THRESHOLD = 40

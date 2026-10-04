@@ -17,7 +17,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
-from config import get_settings
+from backend.config import get_settings
 
 #: Only these extensions are accepted. Anything else is rejected.
 SUPPORTED_EXTENSIONS: frozenset[str] = frozenset({".pdf", ".jpg", ".jpeg", ".png"})

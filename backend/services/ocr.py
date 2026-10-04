@@ -19,7 +19,7 @@ import logging
 
 from PIL import Image, ImageOps
 
-from config import get_settings
+from backend.config import get_settings
 
 logger = logging.getLogger(__name__)
 

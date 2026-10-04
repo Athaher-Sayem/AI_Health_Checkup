@@ -7,9 +7,9 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.reports import router as reports_router
-from config import get_settings
-from schemas.report import HealthResponse
+from backend.api.reports import router as reports_router
+from backend.config import get_settings
+from backend.schemas.report import HealthResponse
 
 # Privacy: keep logs free of report text, values and patient information.
 logging.getLogger("httpx").setLevel(logging.WARNING)
