@@ -246,6 +246,41 @@ class TestCorruptedFiles:
         assert "পাসওয়ার্ড" in response.json()["detail"]
 
 
+class TestTesseractConfiguration:
+    """The README documents TESSERACT_CMD, so it must actually work."""
+
+    def test_configured_path_is_applied_to_pytesseract(self, monkeypatch):
+        from backend.config import get_settings
+        from backend.services import ocr
+
+        monkeypatch.setenv("TESSERACT_CMD", "/opt/tesseract/bin/tesseract")
+        get_settings.cache_clear()
+        try:
+            ocr._apply_tesseract_path()
+            import pytesseract
+
+            assert pytesseract.pytesseract.tesseract_cmd == "/opt/tesseract/bin/tesseract"
+        finally:
+            get_settings.cache_clear()
+            import pytesseract
+
+            pytesseract.pytesseract.tesseract_cmd = "tesseract"
+
+    def test_empty_setting_leaves_the_default(self, monkeypatch):
+        from backend.config import get_settings
+        from backend.services import ocr
+
+        monkeypatch.setenv("TESSERACT_CMD", "")
+        get_settings.cache_clear()
+        try:
+            ocr._apply_tesseract_path()
+            import pytesseract
+
+            assert pytesseract.pytesseract.tesseract_cmd == "tesseract"
+        finally:
+            get_settings.cache_clear()
+
+
 class TestOcrMistakes:
     """Scenario 5: OCR noise must surface, not silently look authoritative."""
 

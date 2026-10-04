@@ -45,11 +45,23 @@ def get_render_dpi() -> int:
 def _tesseract_binary_present() -> bool:
     if not _HAS_TESSERACT_BINDING:
         return False
+    _apply_tesseract_path()
     try:  # pragma: no cover - environment dependent
         pytesseract.get_tesseract_version()
         return True
     except Exception:
         return False
+
+
+def _apply_tesseract_path() -> None:
+    """Point pytesseract at a configured binary.
+
+    On Windows Tesseract is usually not on PATH, so TESSERACT_CMD can name the
+    executable directly.
+    """
+    configured = get_settings().tesseract_cmd.strip()
+    if configured:
+        pytesseract.pytesseract.tesseract_cmd = configured
 
 
 def is_available() -> bool:
@@ -106,6 +118,7 @@ def image_to_text(data: bytes) -> tuple[str, float | None]:
 
 def _tesseract_ocr(image: Image.Image, languages: list[str]) -> tuple[str, float | None]:
     """Run Tesseract, tolerating missing language data files."""
+    _apply_tesseract_path()
     candidates = [lang for lang in languages if lang] or ["eng"]
 
     last_error: Exception | None = None

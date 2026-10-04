@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # --- OCR ---
     ocr_languages: str = Field(default="eng+ben", alias="OCR_LANGUAGES")
     ocr_dpi: int = 220
+    #: Full path to the Tesseract binary. Only needed when it is not on PATH
+    #: (the common case on Windows).
+    tesseract_cmd: str = Field(default="", alias="TESSERACT_CMD")
 
     @field_validator("max_upload_size_mb")
     @classmethod
