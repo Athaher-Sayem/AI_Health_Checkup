@@ -60,7 +60,7 @@ _NOISE_PATTERNS = (
 #: and sending them onward would leak identifying information for no benefit.
 _DEMOGRAPHIC_PATTERNS = (
     re.compile(r"^\s*(patient\s*)?(name|age|dob|date\s*of\s*birth|sex|gender)\b", re.I),
-    re.compile(r"\b(weight|height|bmi|address|phone|mobile|id\s*card|nid)\b", re.I),
+    re.compile(r"\b(weight|height|bmi|address|phone|mobile|mob|tel|contact|id\s*card|nid)\b", re.I),
     re.compile(r"^\s*(mr|mrs|ms|dr|prof)\b\.?\s+\w+", re.I),
     re.compile(
         r"\b(referred\s*by|requested\s*by|doctor|physician|pathologist|"
@@ -575,18 +575,18 @@ def _valid_unit(text: str) -> bool:
 def _has_result_evidence(
     value: float | None,
     qualitative: bool,
-    unit: str | None,
+    censored: bool,
     reference_text: str | None,
 ) -> bool:
     """True when something readable was actually taken from the row.
 
     OCR noise can imitate a table row: a word, another word, then a stray
-    number. Without a measurement, a recognised unit or a readable reference
-    range, the line is not a laboratory result and must not be shown as one.
+    number. Without a measurement, a censored measurement or a readable
+    reference range, the line is not a laboratory result and must not be
+    shown as one. A unit on its own is not evidence: without a measurement
+    there is nothing to place it on.
     """
-    if value is not None or qualitative:
-        return True
-    if unit and _valid_unit(unit):
+    if value is not None or qualitative or censored:
         return True
     if reference_text:
         parsed = parse_reference_range(reference_text)
@@ -660,15 +660,16 @@ def _extract_candidate_from_line(line: str, page: int) -> _Candidate | None:
             unit = " ".join(trailing)
 
     # A unit outside the recognized grammar cannot establish a reliable scale.
+    # The measurement in its own cell still stands, so only the unit is lost.
     if unit and not _valid_unit(unit):
-        value = None
+        unit = None
     if explicit:
         # The geometry established four cells in a recognised table, so the
         # layout has already decided this row is worth keeping. Only an
         # entirely empty row is dropped.
         if not (value is not None or qualitative or unit or reference_text):
             return None
-    elif not _has_result_evidence(value, qualitative, unit, reference_text):
+    elif not _has_result_evidence(value, qualitative, False, reference_text):
         # Without geometry the columns are a guess, so a row has to contain
         # something readable before it may be shown as a result.
         return None
@@ -755,7 +756,9 @@ def _extract_flat_candidate(line: str, page: int) -> _Candidate | None:
         end += following.end()
     match = re.fullmatch(rf"(?P<op>[<>]=?\s*)?(?P<num>{NUMBER})(?P<unit>[^\s\d]*)", result_token)
     inline_unit = match.group("unit") if match else ""
-    exact = match is not None and not match.group("op") and (not inline_unit or _valid_unit(inline_unit))
+    # A censored measurement ("<5") is a reading, not a number to compare.
+    censored = bool(match and match.group("op"))
+    exact = match is not None and not censored and (not inline_unit or _valid_unit(inline_unit))
     value_text = match.group("num") if exact else result_token
     value = _to_float(value_text) if exact else None
     tail = " ".join(part for part in (inline_unit if exact else "", text[end:].strip()) if part)
@@ -772,8 +775,9 @@ def _extract_flat_candidate(line: str, page: int) -> _Candidate | None:
         tail = text[end:qualitative.start()].strip()
     unit = tail.strip(" =_-") or None
     if unit and not _valid_unit(unit):
-        return None
-    if not _has_result_evidence(value, False, unit, reference_text):
+        # The scale could not be read, but a measurement that was read stays.
+        unit = None
+    if not _has_result_evidence(value, False, censored, reference_text):
         return None
 
     return _Candidate(
