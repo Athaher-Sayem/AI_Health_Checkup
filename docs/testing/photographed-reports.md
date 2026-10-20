@@ -59,7 +59,7 @@ Low-confidence or conflicting OCR fields may intentionally remain unknown.
 
 On the local verification run:
 
-- `python -m pytest -o addopts="" -q --tb=short`: **198 passed**.
+- `python -m pytest -o addopts="" -q --tb=short`: **200 passed**.
 - Coverage measured for `extractor`, `ocr`, `ocr_layout`, `pipeline`, and
   `report_summary`: **85% combined statement coverage**. This is not a claim
   about unmeasured modules or clinical accuracy.
@@ -81,6 +81,10 @@ Independent agents reviewed the approach and challenged the parser with
 synthetic counterexamples. Their findings became regression tests for corrupt
 numeric suffixes, digit-bearing units, numeric analyte descriptors, genuine
 bacterial tests, qualitative references, and operator ranges with units.
+The final cross-module review also added checks for preserving trailing empty
+cells and valid `/uL` units. A runtime mutation bypassing unit validation was
+caught by the malformed-result regression; the original function was restored
+without editing the source file.
 
 ## Limits
 
