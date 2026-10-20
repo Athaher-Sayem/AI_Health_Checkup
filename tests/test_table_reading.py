@@ -279,3 +279,11 @@ def test_a_row_with_only_a_readable_range_is_kept():
 
     assert result.test_name == "Haemoglobin"
     assert result.status.value == "unknown"
+
+
+def test_a_table_row_with_nothing_readable_is_still_shown():
+    """Four cells in a recognised table mean the row exists, even if unreadable."""
+    result, = read("MPV\t?\t?\t?")
+
+    assert result.test_name == "MPV"
+    assert result.status.value == "unknown"
