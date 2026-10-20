@@ -86,6 +86,24 @@ cells and valid `/uL` units. A runtime mutation bypassing unit validation was
 caught by the malformed-result regression; the original function was restored
 without editing the source file.
 
+## Upload formats
+
+A photographed report reaches the app as an image file. The accepted formats
+are PDF, JPG, JPEG, PNG and WebP, and the format is confirmed from the file's
+own bytes rather than its name, so a renamed file is still rejected.
+
+WebP is a RIFF container, and RIFF also wraps WAV and AVI files. Only the
+`WEBP` form type at offset 8 identifies an image; a `RIFF`/`WAVE` file named
+`.webp` is rejected as unreadable.
+
+The linked example image is a `.webp` file. Before this change the server
+answered "unsupported file type" and the browser's file picker hid the file,
+so the report could not be uploaded at all.
+
+Verification: `tests/test_image_formats.py` covers WebP acceptance, WebP
+analysis, a renamed PNG rejected as `.webp`, a non-WebP RIFF container
+rejected, and JPEG/PNG staying accepted.
+
 ## Limits
 
 OCR confidence is not a calibrated medical-accuracy score. Bounded local OCR
