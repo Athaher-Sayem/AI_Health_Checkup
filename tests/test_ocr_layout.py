@@ -153,6 +153,90 @@ def test_missing_or_ambiguous_header_does_not_claim_a_layout():
     assert table_text(data(*header(), word("Results", 300, 60))) is None
 
 
+def misread_header():
+    """A photographed heading: "Results" was read as "Reams"."""
+    return [word("Test", 10, 60), word("Reams", 360, 60),
+            word("Unit", 460, 60), word("Bio.Ref.Interval", 620, 60)]
+
+
+def test_misread_results_heading_is_recognized_and_columns_stay_positional():
+    from backend.services.ocr_layout import table_text
+
+    raw = data(*misread_header(),
+               word("WBC", 10, 100), word("7.2", 360, 100),
+               word("x 10 3/uL", 460, 100), word("4-11", 620, 100))
+    assert table_text(raw) == "WBC\t7.2\tx 10 3/uL\t4-11"
+
+
+def test_low_confidence_header_is_recognized_while_a_low_confidence_value_stays_unknown():
+    from backend.services.ocr_layout import table_text
+
+    raw = data(word("Test", 10, 60, conf=45), word("Results", 360, 60, conf=45),
+               word("Unit", 460, 60, conf=45), word("Bio.Ref.Interval", 620, 60, conf=45),
+               word("WBC", 10, 100), word("7.2", 360, 100, conf=45), word("4-11", 620, 100))
+    assert table_text(raw) == "WBC\t?\t\t4-11"
+
+
+def test_header_below_the_header_confidence_floor_is_still_rejected():
+    from backend.services.ocr_layout import table_text
+
+    raw = data(word("Test", 10, 60, conf=39), word("Results", 360, 60),
+               word("Unit", 460, 60), word("Bio.Ref.Interval", 620, 60),
+               word("WBC", 10, 100), word("7.2", 360, 100))
+    assert table_text(raw) is None
+
+
+@pytest.mark.parametrize("headings", [
+    ("Patient", "Complaint", "Notes", "Advice"),
+    ("Patient", "Results", "Unit", "Reference"),
+])
+def test_unrelated_words_are_never_a_header(headings):
+    from backend.services.ocr_layout import table_text
+
+    raw = data(*[word(text, 10 + index * 150, 60) for index, text in enumerate(headings)],
+               word("WBC", 10, 100), word("7.2", 360, 100))
+    assert table_text(raw) is None
+
+
+@pytest.mark.parametrize("duplicate", ["Results", "Reams"])
+def test_header_repeating_a_column_is_still_rejected(duplicate):
+    from backend.services.ocr_layout import table_text
+
+    raw = data(word("Test", 10, 60), word(duplicate, 300, 60), word("Results", 360, 60),
+               word("Unit", 460, 60), word("Bio.Ref.Interval", 620, 60))
+    assert table_text(raw) is None
+
+
+@pytest.mark.parametrize("token,expected", [
+    ("Test", 0), ("Results", 1), ("Unit", 2), ("Reference", 3),
+    ("Reams", 1), ("resit", 1), ("Resut", 1),
+    ("unt", 2), ("referance", 3), ("refernce", 3), ("resul", 1),
+    ("Patient", None), ("Notes", None), ("Advice", None),
+    ("Result Unit", None), ("Result Range", None),
+])
+def test_header_similarity_rule_edges(token, expected):
+    from backend.services.ocr_layout import _header_kind
+
+    assert _header_kind(token) == expected
+
+
+def test_header_veto_uses_the_same_similarity_rule():
+    from backend.services.ocr_layout import has_table_header
+
+    misread = data(*misread_header(), word("WBC", 10, 100))
+    assert has_table_header(misread) is True
+    unrelated = data(word("Patient", 10, 60), word("Complaint", 360, 60),
+                     word("Notes", 460, 60), word("Advice", 620, 60))
+    assert has_table_header(unrelated) is False
+
+
+def test_misread_header_is_reconstructed_without_a_plain_text_fallback(monkeypatch):
+    raw = data(*misread_header(),
+               word("WBC", 10, 100), word("7.2", 360, 100), word("4-11", 620, 100))
+    install_engine(monkeypatch, lambda *a, **kw: raw, unexpected_string)
+    assert ocr._tesseract_ocr(Image.new("L", (800, 300)), ["eng"])[0] == "WBC\t7.2\t\t4-11"
+
+
 def image_bytes(size):
     buffer = io.BytesIO()
     Image.new("L", size, color=255).save(buffer, format="PNG")
