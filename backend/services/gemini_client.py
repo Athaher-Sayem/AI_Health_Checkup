@@ -64,7 +64,7 @@ class GeminiError(RuntimeError):
     """The Gemini call failed. The message is safe to show a user."""
 
 
-def _build_payload(model: str, prompt: str) -> dict:
+def _build_payload(model: str, prompt: str, max_tokens: int = MAX_TOKENS) -> dict:
     return {
         "contents": [
             {
@@ -77,6 +77,9 @@ def _build_payload(model: str, prompt: str) -> dict:
             "temperature": 0.2,  # low: we want faithful prose, not creativity
             "responseMimeType": "application/json",
             "responseSchema": _RESPONSE_SCHEMA,
+            # Without a budget the endpoint truncates a long report's answer
+            # and the whole explanation stage fails.
+            "maxOutputTokens": max_tokens,
         },
     }
 
@@ -111,6 +114,10 @@ def _call_openai_compatible(settings, prompt: str) -> str:
             data = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         logger.warning("AI HTTP error: %s", exc.code)
+        if exc.code == 402:
+            raise GeminiError(
+                "AI সেবার ক্রেডিট শেষ। ফলাফলগুলো রিপোর্টের লেখা থেকে দেখানো হয়েছে।"
+            ) from exc
         raise GeminiError(
             "AI সেবায় সমস্যা হয়েছে। ফলাফলগুলো রিপোর্টের লেখা থেকে দেখানো হয়েছে।"
         ) from exc
@@ -155,7 +162,13 @@ def call_gemini(prompt: str) -> str:
         raise GeminiError("AI ব্যাখ্যার জন্য API key সেট করা নেই।")
 
     url = _ENDPOINT.format(model=settings.gemini_model)
-    body = json.dumps(_build_payload(settings.gemini_model, prompt)).encode("utf-8")
+    body = json.dumps(
+        _build_payload(
+            settings.gemini_model,
+            prompt,
+            getattr(settings, "ai_max_tokens", None) or MAX_TOKENS,
+        )
+    ).encode("utf-8")
 
     request = urllib.request.Request(
         url,
@@ -175,6 +188,10 @@ def call_gemini(prompt: str) -> str:
     except urllib.error.HTTPError as exc:
         # Log the status only - never the body, which may echo report data.
         logger.warning("Gemini HTTP error: %s", exc.code)
+        if exc.code == 402:
+            raise GeminiError(
+                "AI সেবার ক্রেডিট শেষ। ফলাফলগুলো রিপোর্টের লেখা থেকে দেখানো হয়েছে।"
+            ) from exc
         raise GeminiError(
             "AI সেবায় সমস্যা হয়েছে। ফলাফলগুলো রিপোর্টের লেখা থেকে দেখানো হয়েছে।"
         ) from exc
