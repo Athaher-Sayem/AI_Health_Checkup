@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.api.reports import router as reports_router
 from backend.config import get_settings
 from backend.schemas.report import HealthResponse
+from backend.utils import file_handler
 
 # Privacy: keep logs free of report text, values and patient information.
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -51,5 +52,7 @@ def health() -> HealthResponse:
         version=current.app_version,
         ai_configured=current.has_ai_key,
         max_upload_size_mb=current.max_upload_size_mb,
-        supported_types=["pdf", "jpg", "jpeg", "png"],
+        supported_types=sorted(
+            extension.lstrip(".") for extension in file_handler.SUPPORTED_EXTENSIONS
+        ),
     )
