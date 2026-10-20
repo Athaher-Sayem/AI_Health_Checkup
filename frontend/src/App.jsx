@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { ThemeProvider } from './context/ThemeContext.jsx'
 import { LocaleProvider } from './context/LocaleContext.jsx'
 import HomePage from './pages/HomePage.jsx'
@@ -6,20 +6,14 @@ import ProcessingPage from './pages/ProcessingPage.jsx'
 import ResultsPage from './pages/ResultsPage.jsx'
 import Nav from './components/Nav.jsx'
 import Footer from './components/Footer.jsx'
+import { useRequest } from './hooks/useRequest.js'
 import { getHealth } from './services/api.js'
 
 export default function App() {
   const [view, setView] = useState('home')
   const [reportId, setReportId] = useState(null)
-  const [health, setHealth] = useState(null)
 
-  useEffect(() => {
-    let cancelled = false
-    getHealth()
-      .then((data) => { if (!cancelled) setHealth(data) })
-      .catch(() => { if (!cancelled) setHealth(null) })
-    return () => { cancelled = true }
-  }, [])
+  const { data: health } = useRequest(() => getHealth(), [])
 
   const handleUploaded = useCallback((id) => { setReportId(id); setView('processing') }, [])
   const handleAnalyzed = useCallback(() => { setView('results') }, [])

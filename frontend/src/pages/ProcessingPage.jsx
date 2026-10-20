@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useRequest } from '../hooks/useRequest.js'
 import { analyzeReport } from '../services/api.js'
 
 const STEPS = [
@@ -11,44 +12,35 @@ const STEPS = [
 export default function ProcessingPage({ reportId, onDone, onFailed, onCancel }) {
   const [activeStep, setActiveStep] = useState(0)
   const [progress, setProgress] = useState(6)
-  const [error, setError] = useState(null)
-  const started = useRef(false)
+  const finished = useRef(false)
 
+  const { error, loading } = useRequest(() => analyzeReport(reportId), [reportId])
+
+  // The step list and the progress bar advance on their own until the real
+  // response arrives, so the screen never looks stuck.
   useEffect(() => {
-    if (started.current) return
-    started.current = true
-
-    let cancelled = false
     const stepTimer = setInterval(() => {
       setActiveStep((prev) => (prev < STEPS.length - 1 ? prev + 1 : prev))
     }, 1500)
 
-    // Creeps toward 90% and waits for the real response to finish the job.
     const progressTimer = setInterval(() => {
       setProgress((p) => (p < 90 ? p + (90 - p) * 0.08 : p))
     }, 350)
 
-    analyzeReport(reportId)
-      .then(() => {
-        clearInterval(stepTimer)
-        clearInterval(progressTimer)
-        setProgress(100)
-        setActiveStep(STEPS.length)
-        if (!cancelled) setTimeout(onDone, 350)
-      })
-      .catch((err) => {
-        clearInterval(stepTimer)
-        clearInterval(progressTimer)
-        if (cancelled) return
-        setError(err.message)
-      })
-
     return () => {
-      cancelled = true
       clearInterval(stepTimer)
       clearInterval(progressTimer)
     }
-  }, [reportId, onDone])
+  }, [])
+
+  useEffect(() => {
+    if (loading || error || finished.current) return
+    finished.current = true
+    setProgress(100)
+    setActiveStep(STEPS.length)
+    const timer = setTimeout(onDone, 400)
+    return () => clearTimeout(timer)
+  }, [loading, error, onDone])
 
   if (error) {
     return (
@@ -56,7 +48,7 @@ export default function ProcessingPage({ reportId, onDone, onFailed, onCancel })
         <div className="empty-state" style={{ paddingTop: 'var(--space-16)' }}>
           <h2>রিপোর্ট বিশ্লেষণ করা যায়নি</h2>
           <p className="error-text" style={{ marginTop: 'var(--space-3)' }}>
-            {error}
+            {error.message}
           </p>
           <div className="btn-row" style={{ justifyContent: 'center' }}>
             <button type="button" className="btn btn--primary" onClick={onFailed}>

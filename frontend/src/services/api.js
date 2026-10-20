@@ -89,7 +89,7 @@ export function analyzeReport(reportId) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ report_id: reportId }),
     }).then(parse),
-    120000,
+    180000,
     'বিশ্লেষণে অনেক সময় লেগেছে। আবার চেষ্টা করুন।',
   )
 }

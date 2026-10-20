@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import Disclaimer from '../components/Disclaimer.jsx'
 import SummaryCard from '../components/SummaryCard.jsx'
 import TestCard from '../components/TestCard.jsx'
 import { useLocale } from '../context/LocaleContext.jsx'
+import { useRequest } from '../hooks/useRequest.js'
+import { toBanglaNumber } from '../utils/numbers.js'
 import { deleteReport, getReport } from '../services/api.js'
 
 const PrintIcon = () => (
@@ -29,18 +31,10 @@ const TrashIcon = () => (
 
 export default function ResultsPage({ reportId, onReset }) {
   const { t } = useLocale()
-  const [data, setData] = useState(null)
-  const [error, setError] = useState(null)
   const [deleted, setDeleted] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
-    getReport(reportId)
-      .then((result) => { if (!cancelled) setData(result) })
-      .catch((err) => { if (!cancelled) setError(err.message) })
-    return () => { cancelled = true }
-  }, [reportId])
+  const { data, error, loading } = useRequest(() => getReport(reportId), [reportId])
 
   async function handleDelete() {
     try { await deleteReport(reportId) } catch { /* best-effort */ }
@@ -72,7 +66,9 @@ export default function ResultsPage({ reportId, onReset }) {
       <main className="shell">
         <div className="empty-state" style={{ paddingTop: 'var(--space-16)' }}>
           <h2>ফলাফল দেখানো যায়নি</h2>
-          <p className="error-text" style={{ marginTop: 'var(--space-3)' }}>{error}</p>
+          <p className="error-text" style={{ marginTop: 'var(--space-3)' }}>
+            {error.message}
+          </p>
           <div className="btn-row" style={{ justifyContent: 'center' }}>
             <button type="button" className="btn btn--primary" onClick={onReset}>
               {t('new_report')}
@@ -115,7 +111,6 @@ export default function ResultsPage({ reportId, onReset }) {
       </main>
     )
   }
-
   const groups = data.groups ?? {}
   const explanationsByName = new Map(
     (data.explanations ?? []).map((item) => [item.test_name, item]),
@@ -161,7 +156,7 @@ export default function ResultsPage({ reportId, onReset }) {
                 aria-hidden="true"
               />
               {seg.label}
-              <span className="verdict-count">{seg.value}</span>
+              <span className="verdict-count">{toBanglaNumber(seg.value)}</span>
             </span>
           ))}
         </div>
@@ -187,7 +182,7 @@ export default function ResultsPage({ reportId, onReset }) {
           <section key={groupName} className="group">
             <h2 className="group-title">
               {groupName}
-              <span className="group-count">{items.length}</span>
+              <span className="group-count">{toBanglaNumber(items.length)}</span>
             </h2>
             {items.map((item, index) => (
               <TestCard
