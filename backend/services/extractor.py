@@ -115,7 +115,7 @@ _INCONCLUSIVE_TERMS = INCONCLUSIVE_TERMS
 # Numeric / range patterns
 # --------------------------------------------------------------------------
 
-NUMBER = r"[-+]?(?:\d{1,3}(?:,\d{3})+|\d*)(?:\.\d+)?"
+NUMBER = r"[-+]?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+)"
 
 #: `12-16`, `12 - 16`, `12.0-16.0` (a hyphen/en-dash between two numbers).
 _RANGE_RE = re.compile(
@@ -244,10 +244,20 @@ def parse_reference_range(text: str) -> ReferenceRangeInfo | None:
 
     raw = text.strip()
     normalized = normalize_text(raw)
+    ranges = list(_RANGE_RE.finditer(normalized))
+    if len(ranges) > 1:
+        # Multiple demographic-specific ranges require context we do not have.
+        return ReferenceRangeInfo(raw_text=raw, parsed=False)
 
     # 1) `>= 12` / `<= 13` / `> 40` - a bound the report itself declares.
-    operator_match = _OPERATOR_RE.search(normalized)
+    operator_match = re.fullmatch(
+        rf"(?P<op><=|>=|>|<)\s*(?P<bound>{NUMBER})(?:\s*(?P<unit>[^\d\s].*))?",
+        normalized,
+    )
     if operator_match:
+        suffix = operator_match.group("unit")
+        if suffix and not _valid_unit(suffix):
+            return ReferenceRangeInfo(raw_text=raw, parsed=False)
         bound = _to_float(operator_match.group("bound"))
         if bound is not None:
             op = operator_match.group("op")
@@ -268,8 +278,11 @@ def parse_reference_range(text: str) -> ReferenceRangeInfo | None:
             )
 
     # 2) `12 - 16` optionally followed by a unit.
-    range_match = _RANGE_WITH_UNIT_RE.search(normalized)
+    range_match = _RANGE_WITH_UNIT_RE.fullmatch(normalized)
     if range_match:
+        suffix = range_match.group("unit")
+        if suffix and not _valid_unit(suffix):
+            return ReferenceRangeInfo(raw_text=raw, parsed=False)
         low = _to_float(range_match.group("low"))
         high = _to_float(range_match.group("high"))
         if low is not None and high is not None:
@@ -339,6 +352,14 @@ def _looks_like_noise(line: str) -> bool:
     if not stripped:
         return True
     if len(stripped) < MIN_ROW_CHARS:
+        return True
+    if re.search(
+        r"^(?:page\b|patient\b|ref\.?\s*by\b|lab\s*(?:no\b|technician\b)|"
+        r"report\s*date\b|sample\s*drawn\b|note\b|these\b|this\b|"
+        r"in\s+case\b|throughout\b)", stripped, re.I,
+    ):
+        return True
+    if re.search(r"\b(?:originate|infections|immune system)\b", stripped, re.I):
         return True
     if any(pattern.search(stripped) for pattern in _NOISE_PATTERNS):
         return True
@@ -529,12 +550,36 @@ def _unit_from_trailing_cell(value_cells: list[str]) -> str | None:
     return None
 
 
+def _valid_name(name: str) -> bool:
+    return bool(
+        name and len(name) <= 120 and len(name.split()) <= 10
+        and re.search(r"[A-Za-z\u0980-\u09FF]", name)
+        and not _is_header_cell(name)
+        and (len(name) < MIN_ROW_CHARS or not _looks_like_noise(name))
+        and not re.search(r"[.!?;:]", name)
+    )
+
+
+def _valid_unit(text: str) -> bool:
+    """Recognize complete units, including count scales containing digits."""
+    normalized = text.strip().lower().replace("μ", "µ")
+    if normalized in _KNOWN_UNITS or normalized in {"gm%", "/cumm", "/cu.mm", "cells/µl", "pg/ml"}:
+        return True
+    return bool(re.fullmatch(
+        r"(?:million|thousand|cells)\s*/\s*(?:cu\s*mm|cumm|mm3|[uµ]l)|"
+        r"[x×]?\s*10\s*(?:\^?\s*[-+]?\d+)\s*/\s*[uµ]?l",
+        normalized,
+    ))
+
+
 def _extract_candidate_from_line(line: str, page: int) -> _Candidate | None:
     """Parse one report line into a candidate row, or return None."""
     if _looks_like_noise(line):
         return None
 
-    cells = split_row(line)
+    # Tabs from geometric OCR are explicit cell boundaries. Keep empty cells:
+    # a missing result must never shift the unit into the result column.
+    cells = [cell.strip() for cell in line.split("\t")] if "\t" in line else split_row(line)
     if len(cells) < 2:
         # A single cell means the row has no column padding at all. That is
         # the normal shape of OCR output, so try the flat parser before
@@ -555,52 +600,47 @@ def _extract_candidate_from_line(line: str, page: int) -> _Candidate | None:
         return None
 
     name = _clean_name(name_cell)
-    # A test name should contain a letter and not look like a stray number.
-    if not name or not re.search(r"[A-Za-z\u0980-\u09FF]", name):
-        return None
-    if len(name) > 120:
-        return None
-
     rest = cells[1:]
+    explicit = "\t" in line and len(cells) == 4
+    if not explicit and (
+        re.search(rf"\s{NUMBER}(?:\s|$)", name)
+        or (rest and _RANGE_RE.search(rest[0]))
+    ):
+        # Mixed PDF padding: the first cell may contain the measurement, or
+        # the next cell may contain both measurement and range.
+        return _extract_flat_candidate(" ".join(cells), page)
 
-    # Reference range column: the last cell that looks like a range/bound.
+    if not _valid_name(name):
+        return None
+
+    # Only the actual result cell is eligible for numeric conversion.
+    value, value_text, inline_unit, qualitative = _extract_value_and_unit(rest[:1])
+    if inline_unit and not _valid_unit(inline_unit):
+        value, value_text = None, rest[0]
+    if rest and re.match(r"^[<>]", rest[0]):
+        # A censored measurement is not an exact number for range arithmetic.
+        value, value_text = None, rest[0]
+
+    unit = inline_unit
     reference_text = None
-    reference_index = None
-    for position in range(len(rest) - 1, -1, -1):
-        if parse_reference_range(rest[position]) is not None:
-            reference_text = rest[position]
-            reference_index = position
-            break
+    if explicit:
+        unit = cells[2] or None
+        reference_text = cells[3] or None
+    else:
+        trailing = rest[1:]
+        if trailing and trailing[-1].lower() in _FLAG_MARKERS:
+            trailing = trailing[:-1]
+        if trailing and not _valid_unit(trailing[-1]):
+            reference_text = trailing[-1]
+            trailing = trailing[:-1]
+        if trailing:
+            unit = " ".join(trailing)
 
-    value_cells = [cell for i, cell in enumerate(rest) if i != reference_index]
-
-    value, value_text, unit, qualitative = _extract_value_and_unit(value_cells)
-
-    # Column-aligned reports put the unit in its own cell ("45" then "%"), so
-    # recover it from the cell right after the value when the inline parse left
-    # it empty.
-    if unit is None and not qualitative and value is not None:
-        unit = _unit_from_trailing_cell(value_cells)
-
-    # Flat single-line form: the name cell itself may be "Hemoglobin 10.2 g/dL".
-    if value is None and not qualitative:
-        inline_name, inline_value, inline_unit = _split_flat_line(name)
-        if inline_value is not None:
-            name = inline_name
-            value, value_text, unit = inline_value, inline_value, inline_unit
-
-    # Flat form for the reference too: "Hemoglobin 10.2 g/dL 12-16 g/dL".
-    if reference_text is None:
-        _, tail = find_reference_span(line)
-        if tail is not line:
-            parsed = parse_reference_range(find_reference_span(line)[0] or "")
-            if parsed is not None:
-                reference_text = parsed.raw_text
-
-    flag_text = None
-    flag_match = _FLAG_RE.search(line)
-    if flag_match:
-        flag_text = flag_match.group(1)
+    # A unit outside the recognized grammar cannot establish a reliable scale.
+    if unit and not _valid_unit(unit):
+        value = None
+    if value is None and not qualitative and not reference_text:
+        return None
 
     return _Candidate(
         name=name,
@@ -611,7 +651,7 @@ def _extract_candidate_from_line(line: str, page: int) -> _Candidate | None:
         raw_line=line.strip(),
         page=page,
         qualitative=qualitative,
-        flag_text=flag_text,
+        flag_text=None,
     )
 
 
@@ -650,72 +690,39 @@ def _extract_flat_candidate(line: str, page: int) -> _Candidate | None:
     # 1. Peel off a trailing verdict marker ("L", "High", ...).
     text, flag_text = _strip_trailing_flag(text)
 
-    # 2. Peel off the reference range the report printed.
+    # Qualitative values are complete phrases, not numerical tokens.
+    words = _POSITIVE_TERMS | _NEGATIVE_TERMS | _INCONCLUSIVE_TERMS
+    pattern = "|".join(re.escape(word) for word in sorted(words, key=len, reverse=True))
+    qualitative = re.search(rf"(?<!\S)(?:{pattern})(?!\S)", text, re.I)
+    if qualitative:
+        name = _clean_name(text[:qualitative.start()])
+        tail = text[qualitative.end():].strip()
+        if _valid_name(name) and (not tail or tail.lower() in words):
+            return _Candidate(name, None, qualitative.group(), None, tail or None, line, page, True)
+
+    # Start at the first isolated result token, never at a number in a unit.
+    matches = re.finditer(rf"(?<!\S)(?P<op>[<>]=?\s*)?(?P<num>{NUMBER})", text)
+    match = next((item for item in matches
+                  if not re.match(r"[-/]?[A-Za-z]", text[item.end():])
+                  or _valid_unit(text[item.end():].split()[0])), None)
+    if match is None or match.start() == 0:
+        return None
+    name = _clean_name(text[:match.start()])
+    if not _valid_name(name):
+        return None
+    value_text = match.group(0).strip()
+    value = None if match.group("op") else _to_float(match.group("num"))
+    tail = text[match.end():].strip()
+
+    # A reference is a trailing field. Do not remove a range from the result
+    # itself or pull a second number out of an unreadable result.
     reference_text = None
-    range_span, remainder = find_reference_span(text)
-    if range_span:
-        parsed = parse_reference_range(range_span)
-        if parsed is not None:
-            reference_text = parsed.raw_text
-            text = remainder
-    else:
-        remainder = text
-
-    # 3. Peel off the value and its unit, which sit at the end of what is
-    #    left once the range and the flag are gone.
-    tokens = remainder.split()
-    if not tokens:
-        return None
-
-    value: float | None = None
-    value_text: str | None = None
-    unit: str | None = None
-    name_tokens: list[str] = []
-    value_position = -1
-
-    # Walk backwards over the tokens to find the measured value.
-    for position in range(len(tokens) - 1, -1, -1):
-        token = tokens[position]
-
-        pure = _FLAT_PURE_NUMBER_RE.match(token)
-        if pure:
-            value = _to_float(pure.group("num"))
-            value_text = pure.group("num")
-            value_position = position
-            name_tokens = tokens[:position]
-            break
-
-        glued = _FLAT_VALUE_RE.match(token)
-        if glued and _looks_like_unit_token(glued.group("unit") or ""):
-            value = _to_float(glued.group("num"))
-            value_text = glued.group("num")
-            unit = (glued.group("unit") or "").strip() or None
-            value_position = position
-            name_tokens = tokens[:position]
-            break
-
-    if value is None or value_position <= 0 or not name_tokens:
-        return None
-
-    # In a report row the unit follows the value: "Hemoglobin 10.2 g/dL".
-    # OCR sometimes inserts a stray separator ("11,500 = /cumm"), so a couple
-    # of the following tokens are considered before giving up on the unit.
-    if unit is None:
-        for offset in (1, 2):
-            position = value_position + offset
-            if position >= len(tokens):
-                break
-            following = tokens[position]
-            if _looks_like_unit_token(following):
-                unit = following.strip()
-                break
-            if not _is_ocr_noise_token(following):
-                break
-
-    name = _clean_name(" ".join(name_tokens))
-    if not name or not re.search(r"[A-Za-z\u0980-\u09FF]", name):
-        return None
-    if len(name) > 120:
+    spans = list(_RANGE_RE.finditer(tail)) + list(_OPERATOR_RE.finditer(tail))
+    if spans:
+        start = min(span.start() for span in spans)
+        reference_text, tail = tail[start:].strip(), tail[:start].strip()
+    unit = tail.strip(" =_—") or None
+    if unit and not _valid_unit(unit):
         return None
 
     return _Candidate(
