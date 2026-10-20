@@ -567,7 +567,7 @@ def _valid_unit(text: str) -> bool:
         return True
     return bool(re.fullmatch(
         r"(?:million|thousand|cells)\s*/\s*(?:cu\s*mm|cumm|mm3|[uµ]l)|"
-        r"[x×]?\s*10\s*(?:\^?\s*[-+]?\d+)\s*/\s*[uµ]?l",
+        r"[x×]?\s*10\s*(?:\^?\s*[-+]?\d+)\s*/\s*(?:[uµ]?l|cumm)",
         normalized,
     ))
 
@@ -679,9 +679,8 @@ def _extract_flat_candidate(line: str, page: int) -> _Candidate | None:
     arrives as ``Hemoglobin 10.2 g/dL 12.0-16.0 g/dL L``. This parser
     recovers the same fields the column-aligned parser would.
 
-    The order in a lab report row is stable: name, then value, then unit,
-    then the reference range, then an optional verdict marker. Working from
-    the right lets each field be identified without guessing.
+    Establish the first result token before considering any later unit or
+    reference. An unreadable result must not advance the search into its unit.
     """
     text = line.strip()
     if not text:
@@ -690,29 +689,45 @@ def _extract_flat_candidate(line: str, page: int) -> _Candidate | None:
     # 1. Peel off a trailing verdict marker ("L", "High", ...).
     text, flag_text = _strip_trailing_flag(text)
 
+    measurement = None
+    for token in re.finditer(r"\S+", text):
+        # This is an analyte descriptor, not a measurement (Vitamin D 25-OH).
+        if re.fullmatch(r"\d+-OH", token.group(), re.I):
+            continue
+        if re.match(r"[<>+-]?(?:\d|\.\d)", token.group()) or token.group() in {"<", ">", "<=", ">="}:
+            measurement = token
+            break
+
     # Qualitative values are complete phrases, not numerical tokens.
     words = _POSITIVE_TERMS | _NEGATIVE_TERMS | _INCONCLUSIVE_TERMS
     pattern = "|".join(re.escape(word) for word in sorted(words, key=len, reverse=True))
     qualitative = re.search(rf"(?<!\S)(?:{pattern})(?!\S)", text, re.I)
-    if qualitative:
+    if qualitative and (measurement is None or qualitative.start() < measurement.start()):
         name = _clean_name(text[:qualitative.start()])
         tail = text[qualitative.end():].strip()
         if _valid_name(name) and (not tail or tail.lower() in words):
             return _Candidate(name, None, qualitative.group(), None, tail or None, line, page, True)
 
     # Start at the first isolated result token, never at a number in a unit.
-    matches = re.finditer(rf"(?<!\S)(?P<op>[<>]=?\s*)?(?P<num>{NUMBER})", text)
-    match = next((item for item in matches
-                  if not re.match(r"[-/]?[A-Za-z]", text[item.end():])
-                  or _valid_unit(text[item.end():].split()[0])), None)
-    if match is None or match.start() == 0:
+    if measurement is None or measurement.start() == 0:
         return None
-    name = _clean_name(text[:match.start()])
+    name = _clean_name(text[:measurement.start()])
     if not _valid_name(name):
         return None
-    value_text = match.group(0).strip()
-    value = None if match.group("op") else _to_float(match.group("num"))
-    tail = text[match.end():].strip()
+    result_token = measurement.group()
+    end = measurement.end()
+    if result_token in {"<", ">", "<=", ">="}:
+        following = re.match(rf"\s+{NUMBER}(?!\S)", text[end:])
+        if following is None:
+            return None
+        result_token += following.group()
+        end += following.end()
+    match = re.fullmatch(rf"(?P<op>[<>]=?\s*)?(?P<num>{NUMBER})(?P<unit>[^\s\d]*)", result_token)
+    inline_unit = match.group("unit") if match else ""
+    exact = match is not None and not match.group("op") and (not inline_unit or _valid_unit(inline_unit))
+    value_text = match.group("num") if exact else result_token
+    value = _to_float(value_text) if exact else None
+    tail = " ".join(part for part in (inline_unit if exact else "", text[end:].strip()) if part)
 
     # A reference is a trailing field. Do not remove a range from the result
     # itself or pull a second number out of an unreadable result.
@@ -721,8 +736,13 @@ def _extract_flat_candidate(line: str, page: int) -> _Candidate | None:
     if spans:
         start = min(span.start() for span in spans)
         reference_text, tail = tail[start:].strip(), tail[:start].strip()
+    elif qualitative and qualitative.start() >= end:
+        reference_text = text[qualitative.start():].strip()
+        tail = text[end:qualitative.start()].strip()
     unit = tail.strip(" =_—") or None
     if unit and not _valid_unit(unit):
+        return None
+    if value is None and not reference_text:
         return None
 
     return _Candidate(
