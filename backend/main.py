@@ -49,7 +49,7 @@ def health() -> HealthResponse:
         status="ok",
         app=current.app_name,
         version=current.app_version,
-        ai_configured=current.has_gemini_key,
+        ai_configured=current.has_ai_key,
         max_upload_size_mb=current.max_upload_size_mb,
         supported_types=["pdf", "jpg", "jpeg", "png"],
     )
