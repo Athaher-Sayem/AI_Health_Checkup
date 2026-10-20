@@ -107,7 +107,8 @@ def extract_pdf(path: str, ocr_scanned_pages: bool = True) -> PdfResult:
 
             try:
                 png_bytes = _page_image_png(page, ocr.get_render_dpi())
-                ocr_text, confidence = ocr.image_to_text(png_bytes)
+                reading = ocr.read_image(png_bytes)
+                ocr_text, confidence = reading.text, reading.confidence
             except ocr.OcrUnavailableError as exc:
                 result.warnings.append(
                     f"পৃষ্ঠা {page_number}: OCR চালু নেই ({exc})।"
@@ -116,6 +117,11 @@ def extract_pdf(path: str, ocr_scanned_pages: bool = True) -> PdfResult:
                     PageText(page=page_number, text=cleaned, ocr_used=True)
                 )
                 continue
+
+            if ocr_text.strip() and not reading.is_legible:
+                result.warnings.append(
+                    f"পৃষ্ঠা {page_number}: {ocr.LOW_RESOLUTION_WARNING}"
+                )
 
             combined = "\n".join(part for part in (cleaned, ocr_text) if part.strip())
             if not combined.strip():
