@@ -170,7 +170,7 @@ def test_empty_report_never_calls_explanation_service(monkeypatch):
         pytest.fail("No facts means no AI request")
     monkeypatch.setattr(pipeline.gemini_client, "call_gemini", unexpected_call)
     try:
-        blocks, validation, enabled, error = pipeline._explain([], None)
+        blocks, validation, enabled, error, notice = pipeline._explain([], None)
         assert blocks == [] and not validation.checked
     finally:
         get_settings.cache_clear()
@@ -287,3 +287,32 @@ def test_a_table_row_with_nothing_readable_is_still_shown():
 
     assert result.test_name == "MPV"
     assert result.status.value == "unknown"
+
+
+def test_a_censored_measurement_is_kept_without_a_unit_or_range():
+    """A printed "<5" is a reading even when nothing else was read."""
+    result, = read("CRP <5")
+
+    assert result.test_name == "CRP"
+    assert result.value is None
+    assert result.value_text == "<5"
+    assert result.status.value == "unknown"
+
+
+def test_a_readable_measurement_survives_an_unreadable_unit():
+    result, = read("Hemoglobin 12.5 zzz")
+
+    assert result.test_name == "Hemoglobin"
+    assert result.value == 12.5
+    assert result.unit is None
+    assert result.status.value == "unknown"
+
+
+def test_a_unit_without_a_measurement_is_not_a_result():
+    """Without geometry, a unit alone is not evidence of a test."""
+    assert read("HbA1c - %") == []
+
+
+def test_a_phone_number_is_not_a_measurement():
+    assert read("Mob 01712345678") == []
+
