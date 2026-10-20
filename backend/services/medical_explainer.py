@@ -135,15 +135,20 @@ def build_user_prompt(results: list[TestResult]) -> str:
 - রোগ নির্ণয় করবেন না।
 - প্রতিটি পরীক্ষার জন্য তিনটি অংশ লিখুন: সহজ ব্যাখ্যা, সাধারণ তথ্য, যা নির্ধারণ করা যায়নি।
 
+লেখার নিয়ম (সব উত্তর ছোট রাখুন, যেন সব পরীক্ষার ব্যাখ্যা একসাথে ধরে যায়):
+- প্রতিটি অংশে সর্বোচ্চ ২টি ছোট বাক্য লিখুন (প্রতি অংশে সর্বোচ্চ ৪০ শব্দ)।
+- দীর্ঘ অনুচ্ছেদ, তালিকা বা বিস্তারিত ব্যাখ্যা লিখবেন না।
+- প্রতিটি পরীক্ষার জন্য মোট সর্বোচ্চ ৩০ শব্দ লিখুন।
+
 JSON schema:
 {
   "explanations": [
     {
       "test_name": "রিপোর্টে থাকা নাম হুবহু",
       "status": "low|normal|high|abnormal|unknown",
-      "simple_explanation": "রিপোর্টটি কী দেখাচ্ছে, সহজ বাংলায়",
-      "general_information": "এই পরীক্ষা সাধারণত কী মাপে এবং অস্বাভাবিক হলে কী কারণে হতে পারে",
-      "cannot_determine": "শুধু এই রিপোর্ট দেখে যা বোঝা যায় না"
+      "simple_explanation": "১-২ বাক্যে রিপোর্টটি কী দেখাচ্ছে",
+      "general_information": "১-২ বাক্যে এই পরীক্ষাটি সাধারণত কী মাপে",
+      "cannot_determine": "১ বাক্যে শুধু এই রিপোর্ট দেখে যা বোঝা যায় না"
     }
   ]
 }
@@ -167,29 +172,95 @@ def _strip_code_fences(text: str) -> str:
     return cleaned.strip()
 
 
+def _load_json_object(candidate: str) -> Any:
+    """Parse the candidate as JSON, or the outermost ``{...}`` inside it.
+
+    Returns ``None`` when nothing parseable is found.
+    """
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        pass
+
+    start = candidate.find("{")
+    end = candidate.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    try:
+        return json.loads(candidate[start : end + 1])
+    except json.JSONDecodeError:
+        return None
+
+
+def _recover_explanations(text: str) -> list[dict[str, Any]]:
+    """Recover the whole explanation objects from a reply cut off mid-array.
+
+    The array is walked with :meth:`json.JSONDecoder.raw_decode`, so only
+    fully-formed JSON objects are accepted. A trailing half-written object is
+    dropped - it is never completed, guessed or repaired.
+    """
+    key = text.find('"explanations"')
+    if key == -1:
+        return []
+
+    bracket = text.find("[", key)
+    if bracket == -1:
+        return []
+    # Only the key separator may sit between the key and its array.
+    between = text[key + len('"explanations"') : bracket]
+    if any(char not in " \t\r\n:" for char in between):
+        return []
+
+    decoder = json.JSONDecoder()
+    length = len(text)
+    index = bracket + 1
+    recovered: list[dict[str, Any]] = []
+
+    while index < length:
+        # Skip whitespace and the separators between array elements.
+        while index < length and text[index] in " \t\r\n,":
+            index += 1
+        if index >= length or text[index] == "]":
+            break
+        try:
+            value, end = decoder.raw_decode(text, index)
+        except json.JSONDecodeError:
+            # This element is cut off (or malformed). Stop and keep the
+            # objects that were complete.
+            break
+        if isinstance(value, dict):
+            recovered.append(value)
+        index = end
+
+    return recovered
+
+
 def parse_explanations(raw_text: str) -> list[dict[str, Any]]:
     """Parse the model response into a list of explanation dicts.
 
-    Tolerates surrounding prose or code fences. Raises
-    :class:`GeminiUnavailableError` when no JSON object can be recovered.
+    Tolerates surrounding prose or code fences. A reply that was cut off
+    mid-array (typically by the token limit) still yields every complete
+    explanation object - only the incomplete trailing one is dropped.
+
+    Raises :class:`GeminiUnavailableError` when no JSON object can be recovered.
     """
     if not raw_text or not raw_text.strip():
         raise GeminiUnavailableError("AI থেকে খালি উত্তর এসেছে।")
 
     candidate = _strip_code_fences(raw_text)
 
-    try:
-        payload = json.loads(candidate)
-    except json.JSONDecodeError:
-        # Fall back to the outermost JSON object in the response.
-        start = candidate.find("{")
-        end = candidate.rfind("}")
-        if start == -1 or end == -1 or end <= start:
+    payload = _load_json_object(candidate)
+    if payload is None:
+        # Not valid JSON as a whole. The reply may have been truncated inside
+        # the explanations array - recover the complete objects rather than
+        # throwing the whole answer away.
+        recovered = _recover_explanations(candidate)
+        if not recovered:
             raise GeminiUnavailableError("AI উত্তরের বিন্যাস বোঝা যায়নি।")
-        try:
-            payload = json.loads(candidate[start : end + 1])
-        except json.JSONDecodeError as exc:
-            raise GeminiUnavailableError("AI উত্তরের বিন্যাস বোঝা যায়নি।") from exc
+        return recovered
+
+    if not isinstance(payload, dict):
+        raise GeminiUnavailableError("AI উত্তরে ব্যাখ্যা পাওয়া যায়নি।")
 
     explanations = payload.get("explanations")
     if not isinstance(explanations, list):
