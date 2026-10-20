@@ -3,9 +3,13 @@ import Disclaimer from '../components/Disclaimer.jsx'
 import { useLocale } from '../context/LocaleContext.jsx'
 import { uploadReport } from '../services/api.js'
 
-const ACCEPTED = '.pdf,.jpg,.jpeg,.png,.webp'
-const IMAGE_PATTERN = /\.(jpe?g|png|webp)$/i
-const FILE_PATTERN = /\.(pdf|jpe?g|png|webp)$/i
+//: Used until the server reports which formats it accepts.
+const DEFAULT_TYPES = ['pdf', 'jpg', 'jpeg', 'png', 'webp']
+
+/** Escape a file type so it is safe inside a regular expression. */
+function escapePattern(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
 
 const UploadIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -31,6 +35,23 @@ export default function HomePage({ health, maxSizeMb, onUploaded }) {
   const inputRef = useRef(null)
   const objectUrl = useRef(null)
 
+  // The server owns the list of accepted formats, so the picker cannot drift
+  // away from what the API actually accepts.
+  const acceptedTypes =
+    health?.supported_types?.length ? health.supported_types : DEFAULT_TYPES
+  const accepted = acceptedTypes.map((type) => `.${type}`).join(',')
+  const filePattern = new RegExp(
+    `\\.(${acceptedTypes.map(escapePattern).join('|')})$`,
+    'i',
+  )
+  const imagePattern = new RegExp(
+    `\\.(${acceptedTypes
+      .filter((type) => type !== 'pdf')
+      .map(escapePattern)
+      .join('|')})$`,
+    'i',
+  )
+
   useEffect(() => {
     return () => {
       if (objectUrl.current) URL.revokeObjectURL(objectUrl.current)
@@ -53,8 +74,8 @@ export default function HomePage({ health, maxSizeMb, onUploaded }) {
     setError(null)
 
     const lower = file.name.toLowerCase()
-    if (!FILE_PATTERN.test(lower)) {
-      setError('শুধুমাত্র PDF, JPG, JPEG, PNG বা WEBP ফাইল দেওয়া যাবে।')
+    if (!filePattern.test(lower)) {
+      setError(`শুধুমাত্র ${acceptedTypes.map((type) => type.toUpperCase()).join(', ')} ফাইল দেওয়া যাবে।`)
       return
     }
     if (file.size > maxSizeMb * 1024 * 1024) {
@@ -62,7 +83,7 @@ export default function HomePage({ health, maxSizeMb, onUploaded }) {
       return
     }
 
-    const isImage = IMAGE_PATTERN.test(lower)
+    const isImage = imagePattern.test(lower)
     if (objectUrl.current) URL.revokeObjectURL(objectUrl.current)
     objectUrl.current = isImage ? URL.createObjectURL(file) : null
 
@@ -121,11 +142,14 @@ export default function HomePage({ health, maxSizeMb, onUploaded }) {
           </span>
           <p className="dropzone-title">{t('upload_title')}</p>
           <p className="dropzone-hint">{t('upload_hint')}</p>
-          <p className="dropzone-meta">PDF, JPG, JPEG, PNG, WEBP — সর্বোচ্চ {maxSizeMb} MB</p>
+          <p className="dropzone-meta">
+            {acceptedTypes.map((type) => type.toUpperCase()).join(', ')} — সর্বোচ্চ{' '}
+            {maxSizeMb} MB
+          </p>
           <input
             ref={inputRef}
             type="file"
-            accept={ACCEPTED}
+            accept={accepted}
             hidden
             onChange={(e) => handleFile(e.target.files?.[0])}
           />
