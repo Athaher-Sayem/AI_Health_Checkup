@@ -191,6 +191,51 @@ known column name, by a documented character-similarity rule, and a heading
 read with a low confidence may anchor a position - a heading is only a
 position, while data cells keep the strict confidence floor.
 
+## Reading a report that produced no results
+
+Two files were uploaded that produced no results at all: a good photograph
+(`A4sizeSD.png`, 990x1398) and the same report as a PDF with a text layer.
+Both were read correctly once the following were found. The screen behind
+`POST /api/reports/read-text` shows exactly what the reader made of a file -
+the text, where it came from, how legible the picture was and how many rows
+the parser could build from it - so this kind of failure is visible instead of
+silent.
+
+**5. The second column was called VALUE.** The heading row of that report is
+`TEST | VALUE | UNIT | REFERENCE`. Only `Results` was a known name for the
+measurement column, so one column never anchored, the whole table was
+rejected, and the plain-text fallback was vetoed - the page came back empty.
+`VALUE` and `Values` are now known names for that column.
+
+**6. The name column ended in the middle of a long name.** The boundary
+between the name column and the value column was drawn across the gap
+between the two headings. `TOTAL LEUKOCYTE COUNT`, `HEMATOCRIT VALUE, HCT`,
+`MEAN CORPUSCULAR VOLUME, MCV`, `MEAN CELL HAEMOGLOBIN, MCH` and
+`MEAN CELL HAEMOGLOBIN CON, MCHC` all reach further right than that gap, so
+each was cut in half and its row was lost. The boundary now comes from the
+data: a column of measurements sits under its heading, and the measurements
+themselves say where the column begins. Only words a measurement cell can
+hold are used, so a long name cannot move the column.
+
+**7. A comma in a name was taken for prose.** A name is rejected when it
+looks like a sentence, and a comma was one of the signs. But
+`HEMATOCRIT VALUE, HCT` is a name. A comma is now allowed in a short name
+and still marks prose in a long one.
+
+**8. A verdict marker was part of the name.** Reports print `L` or `H` right
+after the test name, and it landed in the name cell. The marker is now
+separated from the name, as it already was in the flat parser.
+
+**9. A PDF's text layer holds one cell per line.** `page.get_text()` returns
+`HEMOGLOBIN`, `15`, `g/dl`, `13 - 17` on four separate lines, so the flat
+parser saw no rows. The positions of the words are still there, and those
+positions are what the same four-column reconstruction used for a photograph
+needs. A PDF page with a text layer now goes through that reconstruction
+too, and its original text is kept alongside it.
+
+Both files now produce the same thirteen results - twelve analytes and one
+qualitative result - with the same verdicts.
+
 ## Limits
 
 OCR confidence is not a calibrated medical-accuracy score. Bounded local OCR
