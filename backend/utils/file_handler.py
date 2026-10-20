@@ -20,7 +20,9 @@ from pathlib import Path
 from backend.config import get_settings
 
 #: Only these extensions are accepted. Anything else is rejected.
-SUPPORTED_EXTENSIONS: frozenset[str] = frozenset({".pdf", ".jpg", ".jpeg", ".png"})
+SUPPORTED_EXTENSIONS: frozenset[str] = frozenset(
+    {".pdf", ".jpg", ".jpeg", ".png", ".webp"}
+)
 
 #: Magic-byte signatures used to verify the real file type.
 _MAGIC: tuple[tuple[bytes, str], ...] = (
@@ -44,6 +46,15 @@ def sanitize_filename(filename: str | None) -> str:
     return (cleaned or "report")[:120]
 
 
+def _is_webp(head: bytes) -> bool:
+    """Detect a WebP image.
+
+    WebP is a RIFF container, and RIFF also wraps WAV and AVI files, so the
+    ``WEBP`` form type at offset 8 is what identifies an image.
+    """
+    return head[:4] == b"RIFF" and head[8:12] == b"WEBP"
+
+
 def detect_extension(filename: str, head: bytes) -> str:
     """Return the canonical extension, verifying the extension matches content.
 
@@ -54,8 +65,15 @@ def detect_extension(filename: str, head: bytes) -> str:
     ext = Path(sanitize_filename(filename)).suffix.lower()
     if ext not in SUPPORTED_EXTENSIONS:
         raise UploadError(
-            "অসমর্থিত ফাইল টাইপ। শুধুমাত্র PDF, JPG, JPEG বা PNG ফাইল দেওয়া যাবে।"
+            "অসমর্থিত ফাইল টাইপ। শুধুমাত্র PDF, JPG, JPEG, PNG বা WEBP ফাইল দেওয়া যাবে।"
         )
+
+    if _is_webp(head):
+        if ext != ".webp":
+            raise UploadError(
+                "ফাইলের নাম এবং ফাইলের আসল ধরন মিলছে না। সঠিক ফাইল আবার দেখুন।"
+            )
+        return ext
 
     for signature, kind in _MAGIC:
         if not head.startswith(signature):
