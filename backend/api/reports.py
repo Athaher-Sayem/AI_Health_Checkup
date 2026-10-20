@@ -165,6 +165,7 @@ async def analyze_report(payload: AnalyzeRequest) -> AnalyzeResponse:
         validation=analyzed.validation,
         ai_enabled=analyzed.ai_enabled,
         ai_error=analyzed.ai_error,
+        ai_notice=analyzed.ai_notice,
     )
 
 
@@ -187,6 +188,7 @@ async def get_report(report_id: str) -> AnalyzeResponse:
         validation=record.validation,
         ai_enabled=record.ai_enabled,
         ai_error=record.ai_error,
+        ai_notice=record.ai_notice,
     )
 
 
