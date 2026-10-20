@@ -56,10 +56,16 @@ def _read_document(upload: TempUpload) -> tuple[list[PageText], DocumentKind, li
     data = upload.path.read_bytes()
     kind = DocumentKind.IMAGE
     try:
-        text, confidence = ocr.image_to_text(data)
+        reading = ocr.read_image(data)
+        text, confidence = reading.text, reading.confidence
     except ocr.OcrUnavailableError as exc:
         warnings.append(f"ছবির লেখা পড়া যায়নি ({exc})।")
         text, confidence = "", None
+    else:
+        if text.strip() and not reading.is_legible:
+            # The picture was too small to read. Say so, instead of letting
+            # invented rows look like results.
+            warnings.append(ocr.LOW_RESOLUTION_WARNING)
 
     if not text.strip():
         warnings.append("ছবিতে কোনো লেখা পড়া যায়নি।")
