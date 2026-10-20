@@ -29,12 +29,17 @@ from backend.services.ocr_layout import CellVerifier, corroborates_cell, has_tab
 
 logger = logging.getLogger(__name__)
 
-#: A printed report's text has to be several pixels tall before an OCR
-#: engine can read it at all. Below this the engine returns plausible-looking
-#: nonsense, so the picture is reported as unreadable instead. Calibrated
-#: against real files: a clean 899x1200 report measures 12 pixels per word,
-#: while a 386x518 web thumbnail of the same page measures 5.5.
+#: How small a printed line may be before an OCR engine cannot read it.
+#: Calibrated against real files: a clean 899x1200 report measures 12 pixels
+#: per word, while a 386x518 web thumbnail of the same page measures 5.5.
 MIN_LEGIBLE_TEXT_HEIGHT_PX = 8.0
+
+#: How sure the engine must be before the reading is trusted as legible.
+#: The word height alone is not enough: a picture of unreadable text produces
+#: tall, meaningless boxes. The engine's own confidence is monotonic - a
+#: readable page scores 95, a thumbnail 42, and a page of unreadable text
+#: between 23 and 49.
+MIN_LEGIBLE_CONFIDENCE = 55.0
 
 #: The user-facing explanation for a picture that is too small to read.
 LOW_RESOLUTION_WARNING = (
@@ -66,13 +71,25 @@ class OcrReading:
     confidence: float | None
     #: Median height of a recognised word, in pixels of the ORIGINAL picture.
     text_height_px: float | None
+    #: Median confidence of the recognised words, on the engine's 0-100 scale.
+    word_confidence: float | None = None
 
     @property
     def is_legible(self) -> bool:
         """False when the picture was too small for the text to be readable."""
-        if self.text_height_px is None:
+        if self.text_height_px is None and self.word_confidence is None:
             return False
-        return self.text_height_px >= MIN_LEGIBLE_TEXT_HEIGHT_PX
+        if (
+            self.word_confidence is not None
+            and self.word_confidence < MIN_LEGIBLE_CONFIDENCE
+        ):
+            return False
+        if (
+            self.text_height_px is not None
+            and self.text_height_px < MIN_LEGIBLE_TEXT_HEIGHT_PX
+        ):
+            return False
+        return True
 
 
 def get_render_dpi() -> int:
@@ -135,6 +152,16 @@ def preprocess_image(data: bytes) -> Image.Image:
     helps faint printed text without altering the underlying numbers beyond
     contrast normalisation.
     """
+    image, _ = _preprocess(data)
+    return image
+
+
+def _preprocess(data: bytes) -> tuple[Image.Image, float]:
+    """Prepare an image for OCR and report the scale that was applied.
+
+    The scale is measured against the EXIF-oriented image, so a phone photo
+    stored sideways is measured against the picture the engine actually saw.
+    """
     with Image.open(io.BytesIO(data)) as source:
         image = ImageOps.exif_transpose(source)
     scale = min(2.0, 2400 / max(image.size),
@@ -145,7 +172,7 @@ def preprocess_image(data: bytes) -> Image.Image:
     if image.mode != "L":
         image = image.convert("L")
     image = ImageOps.autocontrast(image)
-    return image
+    return image, scale
 
 
 def image_to_text(data: bytes) -> tuple[str, float | None]:
@@ -162,20 +189,20 @@ def image_to_text(data: bytes) -> tuple[str, float | None]:
 def read_image(data: bytes) -> OcrReading:
     """OCR an image and report how legible the picture was.
 
-    A printed report's text has to be several pixels tall before an OCR
-    engine can read it. Below that the engine returns plausible-looking
-    nonsense, so the caller is told the picture was too small rather than
-    being handed invented rows.
+    A printed report's text has to be several pixels tall, and the engine has
+    to be reasonably sure of it, before the reading can be trusted. Below that
+    the engine returns plausible-looking nonsense, so the caller is told the
+    picture was too small rather than being handed invented rows.
     """
     settings = get_settings()
-    image = preprocess_image(data)
-
-    with Image.open(io.BytesIO(data)) as source:
-        original_width = source.width or 1
+    image, scale = _preprocess(data)
 
     heights: list[int] = []
+    confidences: list[float] = []
     if _tesseract_binary_present():
-        text, confidence = _tesseract_ocr(image, settings.ocr_lang_list, heights)
+        text, confidence = _tesseract_ocr(
+            image, settings.ocr_lang_list, heights, confidences
+        )
     elif _paddle_available():  # pragma: no cover - optional dependency
         text, confidence = _paddle_ocr(image)
     else:
@@ -183,12 +210,11 @@ def read_image(data: bytes) -> OcrReading:
             "Tesseract ইঞ্জিন ইনস্টল করা নেই (README দেখুন)"
         )
 
-    scale = image.width / original_width
-    median_height = median(heights) / scale if heights else None
     return OcrReading(
         text=text,
         confidence=confidence,
-        text_height_px=median_height,
+        text_height_px=(median(heights) / scale) if heights else None,
+        word_confidence=median(confidences) if confidences else None,
     )
 
 
@@ -230,14 +256,15 @@ def _tesseract_ocr(
     image: Image.Image,
     languages: list[str],
     word_heights: list[int] | None = None,
+    word_confidences: list[float] | None = None,
 ) -> tuple[str, float | None]:
     """Use at most three base OCR calls (20s each), plus four cell rereads (5s).
 
     Language packs are combined, with one English-only fallback. Only exact
     same-cell corroboration can promote low-confidence primary characters.
 
-    ``word_heights`` collects the height of every recognised word so the
-    caller can judge whether the picture was legible at all.
+    ``word_heights`` and ``word_confidences`` collect what the engine made of
+    every word, so the caller can judge whether the picture was legible.
     """
     _apply_tesseract_path()
     combined = "+".join(dict.fromkeys(lang for lang in languages if lang)) or "eng"
@@ -253,12 +280,14 @@ def _tesseract_ocr(
             last_error = exc
             logger.debug("Tesseract layout unavailable for language %s", lang)
             continue
-        if word_heights is not None:
-            word_heights.extend(
-                int(data["height"][index])
-                for index, text in enumerate(data["text"])
-                if text and str(text).strip()
-            )
+        if word_heights is not None or word_confidences is not None:
+            for index, text in enumerate(data["text"]):
+                if not text or not str(text).strip():
+                    continue
+                if word_heights is not None:
+                    word_heights.append(int(data["height"][index]))
+                if word_confidences is not None:
+                    word_confidences.append(float(data["conf"][index]))
         text = table_text(data, verify_cell=_cell_verifier(image, lang))
         if text is not None or has_table_header(data):
             # Do not strip trailing tabs: an empty fourth cell still owns its
