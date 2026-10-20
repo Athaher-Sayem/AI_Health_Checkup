@@ -107,6 +107,31 @@ def test_the_reading_endpoint_counts_the_rows_the_parser_found(client, monkeypat
     assert payload["pages"][0]["parsed_rows"] == 1
 
 
+def test_an_unreadable_picture_reports_no_rows(client, monkeypatch):
+    """The screen must agree with the app: nothing is reported from it."""
+    monkeypatch.setattr(
+        ocr,
+        "read_image",
+        lambda data: ocr.OcrReading(
+            text="Haemoglobin\t12.9\tgm%\t12-16gm%",
+            confidence=0.3,
+            text_height_px=5.5,
+            word_confidence=42.0,
+        ),
+    )
+
+    response = client.post(
+        "/api/reports/read-text",
+        files={"file": ("report.png", image_bytes(), "image/png")},
+    )
+
+    payload = response.json()
+    assert payload["total_rows"] == 0
+    assert payload["pages"][0]["parsed_rows"] == 0
+    # The text that was read is still shown, so the reason can be seen.
+    assert "Haemoglobin" in payload["pages"][0]["text"]
+
+
 def test_the_reading_endpoint_never_calls_the_ai(client, monkeypatch):
     def explode(*args, **kwargs):
         raise AssertionError("the reading screen must not call the AI")
