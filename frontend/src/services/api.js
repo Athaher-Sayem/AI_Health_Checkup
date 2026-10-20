@@ -66,6 +66,16 @@ export function uploadReport(file, onProgress) {
         resolve(payload)
         return
       }
+      if (xhr.status >= 500) {
+        // The API itself failed, so the file is not the problem. Say so
+        // instead of blaming the report the user just picked.
+        reject(
+          new Error(
+            'সার্ভারটি সাড়া দিচ্ছে না। সার্ভার চালু আছে কি না দেখুন, তারপর আবার চেষ্টা করুন।',
+          ),
+        )
+        return
+      }
       const detail =
         payload?.detail ??
         payload?.message ??
