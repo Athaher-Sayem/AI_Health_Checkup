@@ -10,12 +10,14 @@ Privacy rules enforced here:
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import tempfile
+import unicodedata
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+
+from PIL import Image
 
 from backend.config import get_settings
 
@@ -31,7 +33,18 @@ _MAGIC: tuple[tuple[bytes, str], ...] = (
     (b"\x89PNG\r\n\x1a\n", "png"),
 )
 
-_SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
+#: Letters, digits and combining marks from any script are safe in a display
+#: name. Everything else - path separators, control characters, bidirectional
+#: overrides - is replaced, so a name can never disguise its own extension.
+_SAFE_EXTRA_CHARS = frozenset("._- ")
+
+
+def _is_safe_name_char(char: str) -> bool:
+    """True when a character may appear in the name shown to the user."""
+    if char in _SAFE_EXTRA_CHARS:
+        return True
+    # L: letters, M: combining marks, N: numbers.
+    return unicodedata.category(char)[0] in {"L", "M", "N"}
 
 
 class UploadError(Exception):
@@ -39,11 +52,48 @@ class UploadError(Exception):
 
 
 def sanitize_filename(filename: str | None) -> str:
-    """Reduce a client filename to something safe to echo back to the UI."""
+    """Reduce a client filename to a safe display name, without its extension.
+
+    The result is echoed back to the browser and used to build a display
+    label, so unsafe characters are replaced. The extension is read
+    separately from the raw name, because this sanitising destroys a leading
+    non-ASCII run such as ``রিপোর্ট`` and would hide the real format.
+    """
     raw = (filename or "").strip() or "report"
     raw = raw.replace("\\", "/").split("/")[-1]
-    cleaned = _SAFE_NAME_RE.sub("_", raw).strip("._-")
+    stem = Path(raw).stem or raw
+    cleaned = "".join(
+        char if _is_safe_name_char(char) else "_" for char in stem
+    ).strip("._- ")
     return (cleaned or "report")[:120]
+
+
+def _raw_extension(filename: str | None) -> str:
+    """The extension of the client's own filename, read without sanitising.
+
+    This is a pure string operation: the name is never used as a path. The
+    sanitised display name cannot be used here, because sanitising replaces a
+    leading non-ASCII run and would leave a Bangla filename with no
+    extension at all.
+    """
+    raw = (filename or "").replace("\\", "/").split("/")[-1]
+    return Path(raw).suffix.lower()
+
+
+def verify_image(path: Path) -> None:
+    """Raise :class:`UploadError` when the image cannot be decoded.
+
+    The container check proves the bytes look like an image; this proves the
+    image can actually be opened, so a broken file is refused at upload
+    instead of failing later on the results screen.
+    """
+    try:
+        with Image.open(path) as image:
+            image.load()
+    except Exception as exc:
+        raise UploadError(
+            "ছবিটি পড়া যায়নি। ফাইলটি ক্ষতিগ্রস্ত হতে পারে।"
+        ) from exc
 
 
 def _is_webp(head: bytes) -> bool:
@@ -62,7 +112,7 @@ def detect_extension(filename: str, head: bytes) -> str:
     content contradicts the extension (a zip named ``.pdf``), or when neither
     the name nor the bytes identify a format we can read.
     """
-    ext = Path(sanitize_filename(filename)).suffix.lower()
+    ext = _raw_extension(filename)
     if ext not in SUPPORTED_EXTENSIONS:
         raise UploadError(
             "অসমর্থিত ফাইল টাইপ। শুধুমাত্র PDF, JPG, JPEG, PNG বা WEBP ফাইল দেওয়া যাবে।"
@@ -153,7 +203,9 @@ def save_upload(filename: str, data: bytes) -> TempUpload:
     validate_upload_size(len(data))
 
     safe_name = sanitize_filename(filename)
-    extension = detect_extension(safe_name, data[:16])
+    # The format comes from the client's own name, not the sanitised display
+    # name, so a Bangla filename keeps its extension.
+    extension = detect_extension(filename, data[:16])
 
     _purge_stale_temp_files()
 
@@ -170,7 +222,7 @@ def save_upload(filename: str, data: bytes) -> TempUpload:
     return TempUpload(
         report_id=report_id,
         path=path,
-        safe_name=Path(safe_name).stem or "report",
+        safe_name=safe_name,
         extension=extension,
         size_bytes=len(data),
     )
