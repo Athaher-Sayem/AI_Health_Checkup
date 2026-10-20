@@ -213,11 +213,25 @@ def test_header_repeating_a_column_is_still_rejected(duplicate):
     ("unt", 2), ("referance", 3), ("refernce", 3), ("resul", 1),
     ("Patient", None), ("Notes", None), ("Advice", None),
     ("Result Unit", None), ("Result Range", None),
+    ("Text", None),
 ])
 def test_header_similarity_rule_edges(token, expected):
     from backend.services.ocr_layout import _header_kind
 
     assert _header_kind(token) == expected
+
+
+def test_a_page_of_prose_that_mentions_results_is_not_a_table():
+    """A word that merely ends like a heading must not anchor a column."""
+    from backend.services.ocr_layout import has_table_header, table_text
+
+    prose = data(word("Text", 10, 60), word("Results", 360, 60),
+                 word("Unit", 460, 60), word("Reference", 620, 60),
+                 word("Some", 10, 100), word("prose", 360, 100))
+
+    assert has_table_header(prose) is False
+    assert table_text(prose) is None
+
 
 
 def test_header_veto_uses_the_same_similarity_rule():
