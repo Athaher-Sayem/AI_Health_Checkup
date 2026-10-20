@@ -8,6 +8,8 @@ still rejected and a real WebP is no longer refused by the file picker.
 from __future__ import annotations
 
 import io
+import tempfile
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,6 +17,9 @@ from PIL import Image
 
 from backend.main import app
 from backend.services import ocr
+
+#: A scratch directory for files that must not be written into the repository.
+ROOT = Path(tempfile.gettempdir()) / "ai-health-image-format-tests"
 
 
 @pytest.fixture
@@ -208,3 +213,57 @@ def test_the_image_pipeline_can_decode_a_webp():
     # picture that really was decoded.
     assert image.width >= 60 and image.height >= 40
     assert image.width / image.height == pytest.approx(1.5, rel=0.01)
+
+
+HOSTILE_NAMES = [
+    "report.webp\x00.txt",
+    "..\\..\\etc\\passwd.webp",
+    "../../etc/passwd.webp",
+    "CON.webp",
+    "..webp",
+    "report.webp.exe",
+    "report.webp ",
+    "$(id).webp",
+    "`id`.webp",
+    "<img src=x onerror=alert(1)>.webp",
+    "a" * 400 + ".webp",
+]
+
+
+@pytest.mark.parametrize("name", HOSTILE_NAMES)
+def test_a_hostile_name_is_never_echoed_back_unsafe(client, name):
+    """Whatever the name is, the response must not carry anything unsafe."""
+    response = upload(client, name, build_image_bytes("WEBP"), "image/webp")
+
+    assert response.status_code in (200, 400)
+    if response.status_code == 200:
+        filename = response.json()["filename"]
+        for unsafe in ("/", "\\", "\x00", "<", ">", "$", "`", ";", "&", "\n", "\r"):
+            assert unsafe not in filename
+        assert filename.endswith(".webp")
+
+
+def test_an_oversized_image_is_refused_before_it_is_decoded(
+    client, monkeypatch
+):
+    """A small file can describe a huge image; the pixels are checked first."""
+    from backend.utils import file_handler
+
+    ROOT.mkdir(parents=True, exist_ok=True)
+    path = ROOT / "wide.png"
+    Image.new("RGB", (60, 40), color="white").save(path, format="PNG")
+
+    monkeypatch.setattr(file_handler, "MAX_IMAGE_PIXELS", 100)
+    with pytest.raises(file_handler.UploadError) as error:
+        file_handler.verify_image(path)
+
+    assert "সাইজ" in str(error.value)
+    path.unlink(missing_ok=True)
+
+
+def test_the_pixel_limit_still_accepts_a_phone_photograph():
+    """A 48 megapixel camera is real; refusing it would break the feature."""
+    from backend.utils import file_handler
+
+    assert file_handler.MAX_IMAGE_PIXELS >= 48_000_000
+
