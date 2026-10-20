@@ -53,6 +53,6 @@ def health() -> HealthResponse:
         ai_configured=current.has_ai_key,
         max_upload_size_mb=current.max_upload_size_mb,
         supported_types=sorted(
-            extension.lstrip(".") for extension in file_handler.SUPPORTED_EXTENSIONS
+            extension[1:] for extension in file_handler.SUPPORTED_EXTENSIONS
         ),
     )
