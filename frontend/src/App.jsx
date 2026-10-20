@@ -4,6 +4,7 @@ import { LocaleProvider } from './context/LocaleContext.jsx'
 import HomePage from './pages/HomePage.jsx'
 import ProcessingPage from './pages/ProcessingPage.jsx'
 import ResultsPage from './pages/ResultsPage.jsx'
+import TextReadPage from './pages/TextReadPage.jsx'
 import Nav from './components/Nav.jsx'
 import Footer from './components/Footer.jsx'
 import { useRequest } from './hooks/useRequest.js'
@@ -22,7 +23,11 @@ export default function App() {
   return (
     <ThemeProvider>
       <LocaleProvider>
-        <Nav />
+        <Nav
+          view={view}
+          onHome={() => setView('home')}
+          onReadText={() => setView('read-text')}
+        />
         {view === 'processing' && (
           <ProcessingPage
             reportId={reportId}
@@ -32,6 +37,7 @@ export default function App() {
           />
         )}
         {view === 'results' && <ResultsPage reportId={reportId} onReset={handleReset} />}
+        {view === 'read-text' && <TextReadPage />}
         {view === 'home' && (
           <HomePage
             health={health}
