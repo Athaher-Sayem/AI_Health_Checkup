@@ -73,7 +73,10 @@ def _read_image(path: Path, filename: str) -> TextReading:
     )
 
     warnings: list[str] = []
-    if reading.text_height_px is not None and not reading.is_legible:
+    illegible = (
+        reading.text_height_px is not None or reading.word_confidence is not None
+    ) and not reading.is_legible
+    if illegible:
         warnings.append(ocr.LOW_RESOLUTION_WARNING)
     if not text.strip():
         warnings.append("ছবিতে কোনো লেখা পড়া যায়নি।")
@@ -84,6 +87,14 @@ def _read_image(path: Path, filename: str) -> TextReading:
         pages=[page],
         warnings=warnings,
     )
+    if illegible:
+        # The pipeline reports nothing at all from a picture it could not
+        # read, so the row count here must say the same thing. The text that
+        # was read is still shown, so the reason can be seen.
+        page.parsed_rows = 0
+        result.total_rows = 0
+        return result
+
     page.parsed_rows = _count_rows([page])[0]
     result.total_rows = page.parsed_rows
     return result
