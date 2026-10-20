@@ -7,6 +7,8 @@ that must hold regardless of what the model returns.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from backend.schemas.report import ResultStatus
@@ -203,14 +205,53 @@ class TestPipelineWithoutAI:
 
     def test_analysis_succeeds_without_a_key(self, no_ai):
         results = verified_results("Hemoglobin   10.2   g/dL   12 - 16\n")
-        explanations, validation, ai_enabled, ai_error = pipeline._explain(
+        explanations, validation, ai_enabled, ai_error, ai_notice = pipeline._explain(
             results, None
         )
 
         assert explanations == []
         assert ai_enabled is False
         assert ai_error
+        assert ai_notice is None
         assert validation.checked is False
+
+    def test_a_partial_answer_is_reported_as_a_notice(self, monkeypatch):
+        """A reply that covered only some results must say so."""
+        from backend.config import get_settings
+
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key-for-unit-tests")
+        get_settings.cache_clear()
+
+        results = verified_results(
+            "Hemoglobin   10.2   g/dL   12 - 16\n"
+            "HCT   45   %   40 - 50\n"
+        )
+        reply = json.dumps(
+            {
+                "explanations": [
+                    {
+                        "test_name": "Hemoglobin",
+                        "status": "low",
+                        "simple_explanation": "কম",
+                        "general_information": "তথ্য",
+                        "cannot_determine": "কিছু",
+                    }
+                ]
+            }
+        )
+        monkeypatch.setattr(
+            "backend.services.gemini_client.call_gemini", lambda prompt: reply
+        )
+
+        explanations, validation, ai_enabled, ai_error, ai_notice = pipeline._explain(
+            results, None
+        )
+
+        assert ai_error is None
+        assert ai_notice is not None
+        assert "অসম্পূর্ণ" in ai_notice
+        assert "১টি" in ai_notice
+        get_settings.cache_clear()
 
     def test_contradiction_drops_model_prose(self, monkeypatch):
         """A model that keeps contradicting has its prose discarded entirely."""
@@ -229,7 +270,9 @@ class TestPipelineWithoutAI:
 
         monkeypatch.setattr("backend.services.gemini_client.call_gemini", fake_call)
 
-        explanations, validation, ai_enabled, _ = pipeline._explain(results, None)
+        explanations, validation, ai_enabled, _, ai_notice = pipeline._explain(
+            results, None
+        )
 
         # One initial attempt plus exactly one regeneration.
         assert calls["n"] == 2
@@ -237,6 +280,7 @@ class TestPipelineWithoutAI:
         assert validation.contradictions
         assert validation.checked is True
         assert ai_enabled is True
+        assert ai_notice is None
         get_settings.cache_clear()
 
     def test_corrected_model_response_is_kept(self, monkeypatch):
@@ -259,9 +303,10 @@ class TestPipelineWithoutAI:
             "backend.services.gemini_client.call_gemini", lambda prompt: responses.pop(0)
         )
 
-        explanations, validation, _, _ = pipeline._explain(results, None)
+        explanations, validation, _, _, ai_notice = pipeline._explain(results, None)
 
         assert explanations[0].status is ResultStatus.LOW
         assert validation.repaired is True
         assert len(validation.contradictions) == 1
+        assert ai_notice is None
         get_settings.cache_clear()
