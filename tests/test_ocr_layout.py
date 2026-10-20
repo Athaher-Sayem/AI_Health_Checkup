@@ -33,6 +33,41 @@ def table(*words):
     return table_text(data(*header(), *words))
 
 
+def test_a_value_heading_names_the_measurement_column():
+    """Many reports call the second column VALUE, not Results."""
+    from backend.services.ocr_layout import _header_kind
+
+    assert _header_kind("VALUE") == 1
+    assert _header_kind("Values") == 1
+
+
+def test_a_long_test_name_is_not_cut_in_half():
+    """The name column ends where the measurements start, not midway."""
+    words = [
+        word("Test", 10, 60), word("VALUE", 245, 60),
+        word("Unit", 356, 60), word("Reference", 440, 60),
+        word("MEAN CELL HAEMOGLOBIN CON,", 21, 100), word("MCHC", 125, 100),
+        word("35.7", 245, 100), word("%", 356, 100), word("31.5 - 34.5", 440, 100),
+    ]
+    from backend.services.ocr_layout import table_text
+
+    assert table_text(data(*words)) == (
+        "MEAN CELL HAEMOGLOBIN CON, MCHC\t35.7\t%\t31.5 - 34.5"
+    )
+
+
+def test_a_name_with_a_comma_is_still_a_name():
+    words = [
+        word("Test", 10, 60), word("VALUE", 245, 60),
+        word("Unit", 356, 60), word("Reference", 440, 60),
+        word("HEMATOCRIT", 21, 100), word("VALUE,", 88, 100), word("HCT", 125, 100),
+        word("42", 245, 100), word("%", 356, 100), word("40 - 50", 440, 100),
+    ]
+    from backend.services.ocr_layout import table_text
+
+    assert table_text(data(*words)) == "HEMATOCRIT VALUE, HCT\t42\t%\t40 - 50"
+
+
 def test_position_owns_four_cells_despite_column_major_input_and_skew():
     text = table(
         word("Haemoglobin", 10, 100), word("RBC", 10, 140), word("Count", 60, 140),
