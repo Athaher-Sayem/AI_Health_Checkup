@@ -17,6 +17,7 @@ import fitz  # PyMuPDF
 
 from backend.schemas.report import DocumentKind, PageText
 from backend.services import ocr
+from backend.services.ocr_layout import table_text
 
 #: A page needs only a little selectable text to skip OCR. This is deliberately
 #: low: a page holding a single test row is short but is still a text PDF, and
@@ -37,6 +38,8 @@ class PdfResult:
     kind: DocumentKind = DocumentKind.PDF_TEXT
     warnings: list[str] = field(default_factory=list)
     page_count: int = 0
+    #: The text of each page before the table was rebuilt from it.
+    raw_pages: list[str] = field(default_factory=list)
 
     @property
     def ocr_used(self) -> bool:
@@ -53,6 +56,62 @@ def _page_image_png(page: fitz.Page, dpi: int) -> bytes:
     matrix = fitz.Matrix(zoom, zoom)
     pixmap = page.get_pixmap(matrix=matrix, alpha=False)
     return pixmap.tobytes("png")
+
+
+def _page_text_layer_words(page: fitz.Page) -> dict | None:
+    """The word boxes of a page's text layer, in the shape the reader expects.
+
+    A PDF that stores its text writes one table cell per line, so the plain
+    text of a report has no rows in it. The positions of the words are still
+    there, and those positions are what the same four-column reconstruction
+    used for a photograph needs. A text layer is not an OCR reading, so every
+    word is trusted completely.
+    """
+    try:
+        words = page.get_text("words")
+    except Exception:
+        return None
+    if not words:
+        return None
+
+    texts: list[str] = []
+    left: list[float] = []
+    top: list[float] = []
+    width: list[float] = []
+    height: list[float] = []
+    confidence: list[float] = []
+    for entry in words:
+        x0, y0, x1, y1, text = entry[0], entry[1], entry[2], entry[3], entry[4]
+        text = " ".join(str(text).split())
+        if not text:
+            continue
+        texts.append(text)
+        left.append(float(x0))
+        top.append(float(y0))
+        width.append(max(float(x1 - x0), 0.01))
+        height.append(max(float(y1 - y0), 0.01))
+        confidence.append(100.0)
+
+    if not texts:
+        return None
+    return {
+        "text": texts,
+        "left": left,
+        "top": top,
+        "width": width,
+        "height": height,
+        "conf": confidence,
+    }
+
+
+def _table_text_from_words(words: dict | None) -> str | None:
+    """Rebuild the four-column table of a page from its word positions."""
+    if not words:
+        return None
+    try:
+        return table_text(words)
+    except Exception:  # pragma: no cover - defensive, never loses the page
+        return None
 
 
 def extract_pdf(path: str, ocr_scanned_pages: bool = True) -> PdfResult:
@@ -93,13 +152,22 @@ def extract_pdf(path: str, ocr_scanned_pages: bool = True) -> PdfResult:
                 and bool(_ALNUM_RE.search(cleaned))
             )
             if has_text:
+                # The text layer holds one cell per line, so the rows are
+                # rebuilt from where the words sit on the page.
+                table = _table_text_from_words(_page_text_layer_words(page))
+                result.raw_pages.append(cleaned)
                 result.pages.append(
-                    PageText(page=page_number, text=cleaned, ocr_used=False)
+                    PageText(
+                        page=page_number,
+                        text=_clean_page_text(table if table else cleaned),
+                        ocr_used=False,
+                    )
                 )
                 continue
 
             # No usable text layer -> this page is a scan.
             if not ocr_scanned_pages:
+                result.raw_pages.append(cleaned)
                 result.pages.append(
                     PageText(page=page_number, text=cleaned, ocr_used=True)
                 )
@@ -113,6 +181,7 @@ def extract_pdf(path: str, ocr_scanned_pages: bool = True) -> PdfResult:
                 result.warnings.append(
                     f"পৃষ্ঠা {page_number}: OCR চালু নেই ({exc})।"
                 )
+                result.raw_pages.append(cleaned)
                 result.pages.append(
                     PageText(page=page_number, text=cleaned, ocr_used=True)
                 )
@@ -134,6 +203,7 @@ def extract_pdf(path: str, ocr_scanned_pages: bool = True) -> PdfResult:
                     f"পৃষ্ঠা {page_number} থেকে কোনো পাঠযোগ্য লেখা পাওয়া যায়নি।"
                 )
 
+            result.raw_pages.append(cleaned)
             result.pages.append(
                 PageText(
                     page=page_number,
