@@ -19,6 +19,8 @@ import logging
 import math
 import os
 import subprocess
+from dataclasses import dataclass
+from statistics import median
 
 from PIL import Image, ImageOps
 
@@ -26,6 +28,19 @@ from backend.config import get_settings
 from backend.services.ocr_layout import CellVerifier, corroborates_cell, has_table_header, table_text
 
 logger = logging.getLogger(__name__)
+
+#: A printed report's text has to be several pixels tall before an OCR
+#: engine can read it at all. Below this the engine returns plausible-looking
+#: nonsense, so the picture is reported as unreadable instead. Calibrated
+#: against real files: a clean 899x1200 report measures 12 pixels per word,
+#: while a 386x518 web thumbnail of the same page measures 5.5.
+MIN_LEGIBLE_TEXT_HEIGHT_PX = 8.0
+
+#: The user-facing explanation for a picture that is too small to read.
+LOW_RESOLUTION_WARNING = (
+    "ছবির রেজল্যুশন খুব কম, তাই রিপোর্টের লেখা ঠিকভাবে পড়া গেল না। "
+    "মূল ছবি অথবা অনেক বড় রেজল্যুশনের ছবি আপলোড করুন।"
+)
 
 # Tesseract is imported lazily so the app works without it installed.
 try:  # pragma: no cover - import guard
@@ -39,6 +54,25 @@ except ImportError:  # pragma: no cover
 
 class OcrUnavailableError(RuntimeError):
     """No usable OCR engine is installed on this machine."""
+
+
+@dataclass(frozen=True)
+class OcrReading:
+    """What the OCR engine made of one picture."""
+
+    #: The text as read.
+    text: str
+    #: Engine confidence 0-1, when the engine reports one.
+    confidence: float | None
+    #: Median height of a recognised word, in pixels of the ORIGINAL picture.
+    text_height_px: float | None
+
+    @property
+    def is_legible(self) -> bool:
+        """False when the picture was too small for the text to be readable."""
+        if self.text_height_px is None:
+            return False
+        return self.text_height_px >= MIN_LEGIBLE_TEXT_HEIGHT_PX
 
 
 def get_render_dpi() -> int:
@@ -121,17 +155,40 @@ def image_to_text(data: bytes) -> tuple[str, float | None]:
     report it, else ``None``. Raises :class:`OcrUnavailableError` when no engine
     is installed.
     """
+    reading = read_image(data)
+    return reading.text, reading.confidence
+
+
+def read_image(data: bytes) -> OcrReading:
+    """OCR an image and report how legible the picture was.
+
+    A printed report's text has to be several pixels tall before an OCR
+    engine can read it. Below that the engine returns plausible-looking
+    nonsense, so the caller is told the picture was too small rather than
+    being handed invented rows.
+    """
     settings = get_settings()
     image = preprocess_image(data)
 
+    with Image.open(io.BytesIO(data)) as source:
+        original_width = source.width or 1
+
+    heights: list[int] = []
     if _tesseract_binary_present():
-        return _tesseract_ocr(image, settings.ocr_lang_list)
+        text, confidence = _tesseract_ocr(image, settings.ocr_lang_list, heights)
+    elif _paddle_available():  # pragma: no cover - optional dependency
+        text, confidence = _paddle_ocr(image)
+    else:
+        raise OcrUnavailableError(
+            "Tesseract ইঞ্জিন ইনস্টল করা নেই (README দেখুন)"
+        )
 
-    if _paddle_available():  # pragma: no cover - optional dependency
-        return _paddle_ocr(image)
-
-    raise OcrUnavailableError(
-        "Tesseract ইঞ্জিন ইনস্টল করা নেই (README দেখুন)"
+    scale = image.width / original_width
+    median_height = median(heights) / scale if heights else None
+    return OcrReading(
+        text=text,
+        confidence=confidence,
+        text_height_px=median_height,
     )
 
 
@@ -169,11 +226,18 @@ def _cell_verifier(image: Image.Image, language: str) -> CellVerifier:
     return verify
 
 
-def _tesseract_ocr(image: Image.Image, languages: list[str]) -> tuple[str, float | None]:
+def _tesseract_ocr(
+    image: Image.Image,
+    languages: list[str],
+    word_heights: list[int] | None = None,
+) -> tuple[str, float | None]:
     """Use at most three base OCR calls (20s each), plus four cell rereads (5s).
 
     Language packs are combined, with one English-only fallback. Only exact
     same-cell corroboration can promote low-confidence primary characters.
+
+    ``word_heights`` collects the height of every recognised word so the
+    caller can judge whether the picture was legible at all.
     """
     _apply_tesseract_path()
     combined = "+".join(dict.fromkeys(lang for lang in languages if lang)) or "eng"
@@ -189,6 +253,12 @@ def _tesseract_ocr(image: Image.Image, languages: list[str]) -> tuple[str, float
             last_error = exc
             logger.debug("Tesseract layout unavailable for language %s", lang)
             continue
+        if word_heights is not None:
+            word_heights.extend(
+                int(data["height"][index])
+                for index, text in enumerate(data["text"])
+                if text and str(text).strip()
+            )
         text = table_text(data, verify_cell=_cell_verifier(image, lang))
         if text is not None or has_table_header(data):
             # Do not strip trailing tabs: an empty fourth cell still owns its
