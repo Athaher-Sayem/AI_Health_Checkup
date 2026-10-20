@@ -289,6 +289,15 @@ def test_a_table_row_with_nothing_readable_is_still_shown():
     assert result.status.value == "unknown"
 
 
+def test_a_verdict_marker_after_the_name_is_not_part_of_the_name():
+    """A report may print "L" right after the test name."""
+    result, = read("LYMPHOCYTE L\t18\t%\t20 - 40")
+
+    assert result.test_name == "LYMPHOCYTE"
+    assert result.value == 18
+    assert result.status.value == "low"
+
+
 def test_a_censored_measurement_is_kept_without_a_unit_or_range():
     """A printed "<5" is a reading even when nothing else was read."""
     result, = read("CRP <5")
