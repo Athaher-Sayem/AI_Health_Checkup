@@ -231,3 +231,51 @@ def test_confident_per_microlitre_unit_survives_layout_and_validation():
     result = read(table_text(data))[0]
     assert result.unit == "/uL" and result.value == 7.2
     assert result.status.value == "normal"
+
+
+# The shapes below are what OCR produced from a photo whose text was only a
+# few pixels tall. They are noise, not laboratory results.
+OCR_NOISE_LINES = [
+    "Awe               Sd                              Repon Dace       08/09/2025",
+    "Sea               MALE                             Patient",
+    "'Test             Reams Unit                       7007",
+    "Hoemeagicese      129.                             Tang",
+    "WBC Tene Comme    cally / common,                  lek",
+    "Neurephis         nw       on",
+    "osroghaly         o %      ow",
+]
+
+
+@pytest.mark.parametrize("line", OCR_NOISE_LINES)
+def test_ocr_noise_is_never_reported_as_a_laboratory_result(line):
+    """A word, another word and a stray number are not a test."""
+    assert read(line) == []
+
+
+@pytest.mark.parametrize("line", OCR_NOISE_LINES)
+def test_ocr_noise_does_not_create_a_result_for_the_whole_report(line):
+    """One noisy line must not become a row in an otherwise empty report."""
+    results = read(line)
+
+    assert results == []
+    counts = validator.count_results(results)
+    assert counts.total == 0
+    summary = report_summary.build_summary(results, counts)
+    joined = " ".join(summary.bullets)
+    assert "স্বাভাবিক সীমার মধ্যে" not in joined
+
+
+def test_a_row_with_a_recognised_unit_is_kept_even_without_a_value():
+    """We know the test exists and its scale; only the number is unreadable."""
+    result, = read("MPV\t?\tFl\t?")
+
+    assert result.test_name == "MPV"
+    assert result.value is None
+    assert result.status.value == "unknown"
+
+
+def test_a_row_with_only_a_readable_range_is_kept():
+    result, = read("Haemoglobin\t?\tg/dL\t12-16")
+
+    assert result.test_name == "Haemoglobin"
+    assert result.status.value == "unknown"
