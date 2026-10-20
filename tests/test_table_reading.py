@@ -108,3 +108,97 @@ def test_word_boxes_reconstruct_table_without_leaking_headers():
     assert results[2].status.value == "unknown"
     assert "12345" not in text and "Technician" not in text
     assert results[3].status.value == "normal"
+
+
+def test_entire_identifier_free_cbc_table_has_exact_fields():
+    """Manual table transcription, not an assertion about OCR accuracy."""
+    rows = [
+        ("Haemoglobin", "12.9", "gm%", "12-16gm%", "normal"),
+        ("W BC Total Count", "5,900", "cells/cumm", "4000-10000", "normal"),
+        ("RBC Count", "4.17", "million/cu mm", "3.8-4.8million/cumm", "normal"),
+        ("PCV", "43.7", "%", "35-45%", "normal"),
+        ("PCT", "0.159", "%", "0.108-0.282", "normal"),
+        ("PDW", "16.9", "%", "10-18%", "normal"),
+        ("MPV", "12.8", "Fl", "7-11fl", "high"),
+        ("RDW-SD", "53.1", "Fl", "35-56fl", "normal"),
+        ("RDW-CV", "13.0", "%", "10-15%", "normal"),
+        ("MCHC", "29.4", "%", "30-34%", "low"),
+        ("MCH", "30.8", "Pg", "28-32pg", "normal"),
+        ("MCV", "104.8", "Fl", "80-99fl", "high"),
+        ("Neutrophils", "49", "%", "40-70", "normal"),
+        ("Lymphocytes", "43", "%", "20-40", "high"),
+        ("Eosinophils", "07", "%", "00-06%", "high"),
+        ("Monocytes", "01", "%", "00-10%", "normal"),
+        ("Basophils", "00", "%", "00-01%", "normal"),
+        ("Platelet Count", "124000", "/cu.mm", "150000-450000/cumm", "low"),
+        ("Plasmodium Falciparum", "NEGATIVE", "", "", "normal"),
+    ]
+    text = "\n".join("\t".join(row[:4]) for row in rows)
+    results = read(text)
+    assert len(results) == 19
+    for result, expected in zip(results, rows):
+        name, value, unit, reference, status = expected
+        assert (result.test_name, result.value_text, result.unit or "", result.status.value) == (
+            name, value, unit, status,
+        )
+        assert (result.reference.raw_text if result.reference else "") == reference
+        assert result.source_page == 1
+
+
+@pytest.mark.parametrize("row", ["WBC\t\tx10^3/uL\t4-11", "WBC\t?\tx 10 3/uL\t4-11"])
+def test_explicit_empty_or_unknown_cell_cannot_shift_columns(row):
+    result, = read(row)
+    assert result.value is None and result.status.value == "unknown"
+
+
+@pytest.mark.parametrize("row", [
+    "MPV\t12.8\tFl\t7-11f1", "Hemoglobin\t14\tg/dL\tAdult 12-16 Child 11-15",
+    "CRP\t<0.01\tmg/L\t0-5",
+])
+def test_corrupted_or_ambiguous_bounds_do_not_receive_verdicts(row):
+    result, = read(row)
+    assert result.status.value == "unknown"
+
+
+def test_empty_report_never_calls_explanation_service(monkeypatch):
+    from backend.services import pipeline
+    from backend.config import get_settings
+    monkeypatch.setenv("AI_API_KEY", "test-key")
+    monkeypatch.setenv("AI_BASE_URL", "https://example.invalid/v1")
+    get_settings.cache_clear()
+    def unexpected_call(*args):
+        pytest.fail("No facts means no AI request")
+    monkeypatch.setattr(pipeline.gemini_client, "call_gemini", unexpected_call)
+    try:
+        blocks, validation, enabled, error = pipeline._explain([], None)
+        assert blocks == [] and not validation.checked
+    finally:
+        get_settings.cache_clear()
+
+
+def test_qualitative_reference_cannot_replace_positive_result():
+    result, = read("HBsAg Positive Negative")
+    assert result.test_name == "HBsAg"
+    assert result.value_text == "Positive" and result.status.value == "abnormal"
+
+
+def test_uncertain_result_suffix_cannot_disappear_when_unit_is_replaced():
+    result, = read("WBC\t7?2\tx10^3/uL\t4-11")
+    assert result.value is None and result.value_text == "7?2"
+    assert result.status.value == "unknown"
+
+
+def test_bacteria_is_an_analyte_not_a_prose_marker():
+    result, = read("Urine Bacteria   Present")
+    assert result.status.value == "abnormal"
+
+
+def test_numeric_analyte_descriptor_is_not_the_measurement():
+    result, = read("Vitamin D 25-OH 18 ng/mL 30-100")
+    assert (result.test_name, result.value, result.status.value) == ("Vitamin D 25-OH", 18, "low")
+
+
+def test_operator_range_can_carry_a_printed_unit():
+    result, = read("CRP\t10\tmg/L\t<5 mg/L")
+    assert result.reference.raw_text == "<5 mg/L"
+    assert result.status.value == "high"
