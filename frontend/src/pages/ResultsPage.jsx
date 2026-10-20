@@ -171,6 +171,12 @@ export default function ResultsPage({ reportId, onReset }) {
         </p>
       ) : null}
 
+      {data.ai_notice ? (
+        <p className="notice" role="status">
+          {data.ai_notice}
+        </p>
+      ) : null}
+
       {data.meta?.warnings?.length ? (
         <div className="warning-list" role="status">
           {data.meta.warnings.map((warning, index) => (
