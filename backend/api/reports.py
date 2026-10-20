@@ -27,7 +27,7 @@ from backend.schemas.report import (
     ReportRecord,
     UploadResponse,
 )
-from backend.services import pdf_processor, pipeline
+from backend.services import pdf_processor, pipeline, text_reader
 from backend.services.report_store import store
 from backend.utils import file_handler
 
@@ -45,6 +45,32 @@ class AnalyzeRequest(BaseModel):
     report_id: str = Field(
         ..., pattern=_ID_PATTERN, description="Id returned by the upload endpoint"
     )
+
+
+class PageReadingModel(BaseModel):
+    """What one page yielded, exactly as it was read."""
+
+    page: int
+    source: str = Field(..., description="ocr or text-layer")
+    text: str
+    raw_text: str | None = None
+    characters: int = 0
+    lines: int = 0
+    legible: bool | None = None
+    word_count: int | None = None
+    median_text_height_px: float | None = None
+    median_word_confidence: float | None = None
+    parsed_rows: int = 0
+
+
+class ReadTextResponse(BaseModel):
+    """The text of a document, with the measurements that explain it."""
+
+    filename: str
+    kind: str
+    pages: list[PageReadingModel]
+    warnings: list[str] = Field(default_factory=list)
+    total_rows: int = 0
 
 
 @router.post("/upload", response_model=UploadResponse)
@@ -110,6 +136,89 @@ async def upload_report(file: UploadFile = File(...)) -> UploadResponse:
         filename=upload.filename,
         size_bytes=upload.size_bytes,
         expires_in_minutes=settings.result_ttl_minutes,
+    )
+
+
+@router.post("/read-text", response_model=ReadTextResponse)
+async def read_text(file: UploadFile = File(...)) -> ReadTextResponse:
+    """Read an uploaded report and return its text, with nothing interpreted.
+
+    This is the diagnostic surface: it shows exactly what the reader made of
+    the file - the text, how legible the picture was, where the text came
+    from and how many rows the parser could build from it. No AI is called
+    and nothing is kept.
+
+    Privacy: the file is written to a private temp directory and deleted as
+    soon as it has been read.
+    """
+    try:
+        data = await _read_upload(file)
+    except file_handler.UploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
+        upload = file_handler.save_upload(file.filename or "report", data)
+    except file_handler.UploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    try:
+        if upload.extension in file_handler.DOCUMENT_EXTENSIONS:
+            try:
+                with fitz.open(str(upload.path)) as document:
+                    if document.needs_pass:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="এই PDF ফাইলটি পাসওয়ার্ড সুরক্ষিত। আনফলকড PDF দিন।",
+                        )
+            except HTTPException:
+                raise
+            except Exception:
+                raise HTTPException(
+                    status_code=400,
+                    detail="PDF ফাইলটি পড়া যায়নি। ফাইলটি ক্ষতিগ্রস্ত হতে পারে।",
+                ) from None
+        else:
+            try:
+                await run_in_threadpool(file_handler.verify_image, upload.path)
+            except file_handler.UploadError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        reading = await run_in_threadpool(
+            text_reader.read_document, str(upload.path), upload.filename
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Reading text failed")
+        raise HTTPException(
+            status_code=422,
+            detail="ফাইলটির লেখা পড়া যায়নি। অন্য একটি ফাইল ব্যবহার করুন।",
+        ) from None
+    finally:
+        # Privacy: the bytes are never kept after reading.
+        upload.cleanup()
+
+    return ReadTextResponse(
+        filename=reading.filename,
+        kind=reading.kind,
+        warnings=reading.warnings,
+        total_rows=reading.total_rows,
+        pages=[
+            PageReadingModel(
+                page=page.page,
+                source=page.source,
+                text=page.text,
+                raw_text=page.raw_text,
+                characters=page.characters,
+                lines=page.lines,
+                legible=page.legible,
+                word_count=page.word_count,
+                median_text_height_px=page.median_text_height_px,
+                median_word_confidence=page.median_word_confidence,
+                parsed_rows=page.parsed_rows,
+            )
+            for page in reading.pages
+        ],
     )
 
 
