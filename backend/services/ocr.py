@@ -73,6 +73,8 @@ class OcrReading:
     text_height_px: float | None
     #: Median confidence of the recognised words, on the engine's 0-100 scale.
     word_confidence: float | None = None
+    #: How many words the engine recognised.
+    word_count: int = 0
 
     @property
     def is_legible(self) -> bool:
@@ -215,6 +217,7 @@ def read_image(data: bytes) -> OcrReading:
         confidence=confidence,
         text_height_px=(median(heights) / scale) if heights else None,
         word_confidence=median(confidences) if confidences else None,
+        word_count=len(heights),
     )
 
 
