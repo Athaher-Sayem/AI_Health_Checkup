@@ -181,6 +181,9 @@ class ReportRecord(BaseModel):
     validation: ValidationReport = Field(default_factory=ValidationReport)
     ai_enabled: bool = False
     ai_error: str | None = None
+    #: Set when the AI answered, but not for every result. A partial answer
+    #: is not an error, so it is reported separately.
+    ai_notice: str | None = None
     pages: list[PageText] = Field(default_factory=list)
 
 
@@ -200,6 +203,7 @@ class AnalyzeResponse(BaseModel):
     validation: ValidationReport
     ai_enabled: bool
     ai_error: str | None = None
+    ai_notice: str | None = None
     disclaimer: str = DISCLAIMER_BN
 
 
