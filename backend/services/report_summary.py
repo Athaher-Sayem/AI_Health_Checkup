@@ -66,14 +66,16 @@ def build_summary(results: list[TestResult], counts: Counts) -> ReportSummary:
     bullets: list[str] = []
     n = _bangla_number
 
-    bullets.append(f"{n(counts.normal)}টি পরীক্ষার ফলাফল স্বাভাবিক সীমার মধ্যে।")
+    bullets.append("পড়া ফলাফলগুলোর সারাংশ; রিপোর্টটি সম্পূর্ণ পড়া গেছে কি না নিশ্চিত করা যায়নি।")
+    if counts.total:
+        bullets.append(f"পড়া ফলাফলগুলোর মধ্যে {n(counts.normal)}টি স্বাভাবিক সীমার মধ্যে।")
 
     if counts.outside:
         bullets.append(
             f"{n(counts.outside)}টি ফলাফল রিপোর্টে দেওয়া সীমার বাইরে।"
         )
-    else:
-        bullets.append("রিপোর্টে দেওয়া সীমার বাইরে কোনো ফলাফল পাওয়া যায়নি।")
+    elif counts.total and not counts.unknown:
+        bullets.append("শুধু পড়া ও তুলনা করা ফলাফলগুলোতে সীমার বাইরের মান শনাক্ত হয়নি।")
 
     if counts.unknown:
         bullets.append(
@@ -93,9 +95,6 @@ def build_summary(results: list[TestResult], counts: Counts) -> ReportSummary:
         bullets.append(f"{result.test_name} বেশি ({_describe_value(result)} প্রতি রিপোর্টের সীমা অনুযায়ী)।")
     for result in abnormals:
         bullets.append(f"{result.test_name} এর ফলাফল: {result.value_text}।")
-
-    if not (lows or highs or abnormals) and counts.normal:
-        bullets.append("অন্যান্য ফলাফল স্বাভাবিক সীমার মধ্যে রয়েছে।")
 
     if not results:
         bullets.append("রিপোর্ট থেকে কোনো পরীক্ষার ফলাফল পড়া যায়নি।")
