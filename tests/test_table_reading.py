@@ -215,3 +215,19 @@ def test_qualitative_reference_cannot_erase_a_numeric_measurement():
 def test_corrupt_result_cannot_advance_into_unit_exponents(bounds):
     results = read(f"WBC 12O x10 3/cumm {bounds}")
     assert not results or (results[0].value is None and results[0].status.value == "unknown")
+
+
+def test_empty_reference_preserves_four_cells_and_numeric_analyte_name():
+    result, = read("Complement C 3\t110\tmg/dL\t")
+    assert (result.test_name, result.value, result.unit) == ("Complement C 3", 110, "mg/dL")
+    assert result.status.value == "unknown"
+
+
+def test_confident_per_microlitre_unit_survives_layout_and_validation():
+    from backend.services.ocr_layout import table_text
+    data = synthetic_ocr_data()
+    substitutions = {"Haemoglobin": "WBC", "12.9": "7.2", "gm%": "/uL", "12-16gm%": "4-11"}
+    data["text"] = [substitutions.get(text, text) for text in data["text"]]
+    result = read(table_text(data))[0]
+    assert result.unit == "/uL" and result.value == 7.2
+    assert result.status.value == "normal"
