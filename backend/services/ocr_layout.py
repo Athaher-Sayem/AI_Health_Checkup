@@ -14,6 +14,10 @@ import re
 from statistics import median
 
 MIN_CONFIDENCE = 70
+# A photographed heading is often read with a low score, and a heading is only
+# a position: a weakly read heading that still matched a known column name
+# cannot move a value. Data cells keep the stricter MIN_CONFIDENCE floor.
+MIN_HEADER_CONFIDENCE = 40
 MAX_WORDS = 20_000
 _FIELDS = ("text", "left", "top", "width", "height", "conf")
 _NUMBER = re.compile(r"[<>≤≥]?\s*[+-]?(?:\d+(?:,\d{3})*(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?")
@@ -25,6 +29,22 @@ _FOOTER = re.compile(r"^(?:lab\s*technician\b|note\b|page\b)", re.IGNORECASE)
 _METADATA = re.compile(
     r"^(?:patient\b|age\b|sex\b|gender\b|report\b|lab\b|ref\.?\s*by\b|date\b)",
     re.IGNORECASE,
+)
+# The four column kinds, in column order. A heading names a column only when
+# it is one of these words (see ``_similar_header_token`` for the narrow
+# near-miss allowance).
+_HEADER_OPTIONS = (
+    ("test", "tests", "testname"),
+    ("result", "results"),
+    ("unit", "units"),
+    ("reference", "referencerange", "referenceinterval", "biorefinterval", "refinterval"),
+)
+# Every heading of the other three columns, per kind. A token that already
+# contains one of them is two headings read together, not one misread heading.
+_HEADER_FOREIGN = tuple(
+    tuple(other for position, group in enumerate(_HEADER_OPTIONS) if position != index
+          for other in group)
+    for index in range(len(_HEADER_OPTIONS))
 )
 
 
@@ -54,15 +74,79 @@ def _compact(text: str) -> str:
     return re.sub(r"[^a-z0-9]", "", text.lower())
 
 
+def _edit_distance(left: str, right: str, limit: int) -> int:
+    """Levenshtein distance of two tokens, capped at ``limit``.
+
+    Returns ``limit + 1`` as soon as the distance is known to exceed the
+    limit, so an unbounded token cannot cost more than a bounded table.
+    """
+    if abs(len(left) - len(right)) > limit:
+        return limit + 1
+    previous = list(range(len(right) + 1))
+    for index, source in enumerate(left, 1):
+        current = [index]
+        for offset, target in enumerate(right, 1):
+            current.append(min(
+                previous[offset] + 1,
+                current[offset - 1] + 1,
+                previous[offset - 1] + (source != target),
+            ))
+        if min(current) > limit:
+            return limit + 1
+        previous = current
+    return previous[-1]
+
+
+def _similar_header_token(token: str, option: str, foreign: tuple[str, ...]) -> bool:
+    """Decide whether a read heading is a close misread of a known heading.
+
+    One misread character in a photographed heading ("Results" read as
+    "Reams") otherwise loses the whole table, so a near miss may still name
+    a column. Only character similarity is used here: no medical or
+    table-content heuristic, and no list of known misreads.
+
+    A token matches an option when either rule holds:
+
+    * boundary similarity - the same first two characters, the same last
+      character, and lengths differing by at most 3
+      ("reams"/"results", "unt"/"unit", "referance"/"reference"); or
+    * edit similarity - a Levenshtein distance of at most 2 between two
+      tokens that are both at least 5 characters long
+      ("refernce"/"reference", "resit"/"result").
+
+    ``foreign`` holds every heading of the other three columns. A token that
+    already contains one of them is two headings read together (such as
+    "Result Unit"), never one misread heading, so it is never accepted.
+    """
+    if not token or not option:
+        return False
+    if any(other in token for other in foreign):
+        return False
+    if (len(token) >= 2 and len(option) >= 2
+            and token[:2] == option[:2] and token[-1] == option[-1]
+            and abs(len(token) - len(option)) <= 3):
+        return True
+    return (len(token) >= 5 and len(option) >= 5
+            and _edit_distance(token, option, 2) <= 2)
+
+
 def _header_kind(text: str) -> int | None:
+    """Return the column kind of a heading phrase, or None when unclear.
+
+    An exact heading wins. Otherwise a single conservative near miss may
+    still name a column, but a phrase that could belong to two columns stays
+    unrecognised: a heading is never guessed.
+    """
     key = _compact(text)
-    for index, options in enumerate((
-        {"test", "tests", "testname"}, {"result", "results"}, {"unit", "units"},
-        {"reference", "referencerange", "referenceinterval", "biorefinterval", "refinterval"},
-    )):
-        if key in options:
-            return index
-    return None
+    exact = [index for index, options in enumerate(_HEADER_OPTIONS) if key in options]
+    if len(exact) == 1:
+        return exact[0]
+    if exact:
+        return None
+    similar = [index for index, options in enumerate(_HEADER_OPTIONS)
+               if any(_similar_header_token(key, option, _HEADER_FOREIGN[index])
+                      for option in options)]
+    return similar[0] if len(similar) == 1 else None
 
 
 def has_table_header(data: object) -> bool:
@@ -70,6 +154,13 @@ def has_table_header(data: object) -> bool:
 
     This is a fallback veto, not permission to parse a table. Otherwise rejected
     geometry could be reinterpreted by a less strict, plain-text OCR pass.
+
+    The heading wording is judged by :func:`_header_kind`, the same function
+    the parser uses, so the veto can never be stricter or looser about a
+    misread heading than the parser is. It deliberately asks for less than the
+    parser does - a test column, a results column and one of the remaining two
+    - because a veto that missed rejected header evidence would let the
+    permissive plain-text pass reinterpret it.
     """
     if not isinstance(data, Mapping):
         return False
@@ -163,7 +254,10 @@ def _header(words: list[_Word], height: float) -> tuple[list[_Word], float] | No
             if any(len(values) != 1 for values in anchors.values()):
                 return None
             cells = [next(iter(anchors[index].values())) for index in range(4)]
-            if (min(cell.confidence for cell in cells) < MIN_CONFIDENCE
+            # A heading only marks a column, so a weakly read heading that
+            # still matched a known column name may anchor it. The floor is
+            # lower than MIN_CONFIDENCE, which still guards every data cell.
+            if (min(cell.confidence for cell in cells) < MIN_HEADER_CONFIDENCE
                     or any(a.right >= b.left for a, b in zip(cells, cells[1:]))):
                 return None
             candidates.append((cells, max(word.cy for word in row)))
