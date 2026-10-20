@@ -3,7 +3,9 @@ import Disclaimer from '../components/Disclaimer.jsx'
 import { useLocale } from '../context/LocaleContext.jsx'
 import { uploadReport } from '../services/api.js'
 
-const ACCEPTED = '.pdf,.jpg,.jpeg,.png'
+const ACCEPTED = '.pdf,.jpg,.jpeg,.png,.webp'
+const IMAGE_PATTERN = /\.(jpe?g|png|webp)$/i
+const FILE_PATTERN = /\.(pdf|jpe?g|png|webp)$/i
 
 const UploadIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -51,8 +53,8 @@ export default function HomePage({ health, maxSizeMb, onUploaded }) {
     setError(null)
 
     const lower = file.name.toLowerCase()
-    if (!/\.(pdf|jpe?g|png)$/.test(lower)) {
-      setError('শুধুমাত্র PDF, JPG, JPEG বা PNG ফাইল দেওয়া যাবে।')
+    if (!FILE_PATTERN.test(lower)) {
+      setError('শুধুমাত্র PDF, JPG, JPEG, PNG বা WEBP ফাইল দেওয়া যাবে।')
       return
     }
     if (file.size > maxSizeMb * 1024 * 1024) {
@@ -60,7 +62,7 @@ export default function HomePage({ health, maxSizeMb, onUploaded }) {
       return
     }
 
-    const isImage = /\.(jpe?g|png)$/.test(lower)
+    const isImage = IMAGE_PATTERN.test(lower)
     if (objectUrl.current) URL.revokeObjectURL(objectUrl.current)
     objectUrl.current = isImage ? URL.createObjectURL(file) : null
 
@@ -119,7 +121,7 @@ export default function HomePage({ health, maxSizeMb, onUploaded }) {
           </span>
           <p className="dropzone-title">{t('upload_title')}</p>
           <p className="dropzone-hint">{t('upload_hint')}</p>
-          <p className="dropzone-meta">PDF, JPG, JPEG, PNG — সর্বোচ্চ {maxSizeMb} MB</p>
+          <p className="dropzone-meta">PDF, JPG, JPEG, PNG, WEBP — সর্বোচ্চ {maxSizeMb} MB</p>
           <input
             ref={inputRef}
             type="file"
