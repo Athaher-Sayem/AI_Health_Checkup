@@ -135,9 +135,69 @@ analysis, a renamed PNG rejected as `.webp`, a non-WebP RIFF container
 rejected, JPEG/PNG staying accepted, Bangla filenames, undecodable images,
 hostile file names, the pixel limit, and the display-name rules.
 
+## A picture that is too small to read
+
+A user uploaded a photographed CBC report as `images.jpg`. The application
+reported eight "undetermined" results with names such as `Awe`, `Sea`,
+`Hoemeagicese` and `osroghaly`. Four separate faults were behind that, found
+by reading the server's stored OCR text rather than the screen.
+
+**1. The picture was a web thumbnail.** The file was 386x518 pixels and 22 KB -
+roughly 47 dots per inch for a whole page. The median recognised word stood
+5.5 pixels tall. Tesseract needs about twenty pixels of letter height, so the
+engine read the title and a few large words and invented the rest. Sixteen
+combinations of upscale factor, sharpening and page-segmentation mode were
+tried on that exact file; the best recovered 6 of 19 values, and those were
+coincidental two-digit matches. No preprocessing can recover a picture that
+does not contain the information.
+
+The application now measures legibility instead of guessing: the median height
+of a recognised word is measured in the *original* picture and compared against
+`ocr.MIN_LEGIBLE_TEXT_HEIGHT_PX`. Below it the picture is reported as
+unreadable, in Bangla, with the instruction to upload the original. The
+threshold is calibrated against real files: a clean 899x1200 report measures
+12 pixels per word, the thumbnail measures 5.5. `tests/test_legibility.py`
+covers the measurement with the real engine, in both directions.
+
+**2. The parser turned noise into results.** A line only became a result if it
+had a name and something that looked like a reference range - and an
+unparseable range such as `08/09/2025` or `7007` was enough. Eight lines of
+OCR noise therefore became eight undetermined tests. A row now needs a
+measurement, a recognised unit, or a *readable* reference range before it may
+be shown as a result. The seven noise shapes from this file are pinned in
+`tests/test_table_reading.py`. A row that came from the geometric table
+layout keeps its own rule, because that layout has already decided the row is
+real.
+
+**3. The AI stage could never finish.** `gemini_client` asked for 2048 tokens.
+A report with nineteen rows needs three short Bangla paragraphs each, so the
+reply was cut off in the middle of an object and the whole explanation stage
+failed with "the shape of the AI reply could not be read". The budget is now
+`AI_MAX_TOKENS` (8192 by default, clamped to 256..32768) and a truncated
+reply keeps every complete object it contains, dropping only the incomplete
+trailing one.
+
+**4. A misread heading disabled the whole table.** The heading was read as
+`Reams` instead of `Results`, so no table could be recognised and the flat
+parser took over. A heading now also matches when it is a close near-miss of a
+known column name, by a documented character-similarity rule, and a heading
+read with a low confidence may anchor a position - a heading is only a
+position, while data cells keep the strict confidence floor.
+
 ## Limits
 
 OCR confidence is not a calibrated medical-accuracy score. Bounded local OCR
 and conservative parsing cannot guarantee that every layout or clear-looking
 digit is correct. Inspect the original report and consult a qualified clinician.
 Neither normal extracted values nor a successful software test establish health.
+
+A picture whose text is only a few pixels tall cannot be read by any OCR
+engine, and no amount of upscaling or sharpening adds the missing detail.
+The application says so rather than inventing rows, but it cannot read a
+report the user did not photograph at a usable resolution.
+
+The table reconstruction still needs all four column headings. When the
+reference column's heading is not read at all, the table is not reconstructed
+and the report is reported as unread rather than guessed. Reading such a
+photograph needs the original picture, so that case has not been closed here.
+
