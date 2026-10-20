@@ -151,13 +151,19 @@ tried on that exact file; the best recovered 6 of 19 values, and those were
 coincidental two-digit matches. No preprocessing can recover a picture that
 does not contain the information.
 
-The application now measures legibility instead of guessing: the median height
-of a recognised word is measured in the *original* picture and compared against
-`ocr.MIN_LEGIBLE_TEXT_HEIGHT_PX`. Below it the picture is reported as
-unreadable, in Bangla, with the instruction to upload the original. The
-threshold is calibrated against real files: a clean 899x1200 report measures
-12 pixels per word, the thumbnail measures 5.5. `tests/test_legibility.py`
-covers the measurement with the real engine, in both directions.
+The application now measures legibility instead of guessing. Two signals are
+used: the median height of a recognised word, measured in the *original*
+picture, and the engine's own confidence in the words it read. The height
+alone is not enough - unreadable text produces tall, meaningless boxes - while
+the confidence is monotonic. A clean 899x1200 report scores 12 pixels per
+word and a confidence of 95; the thumbnail measures 5.5 pixels and scores 42;
+text that is too small to read scores between 23 and 49. A picture below the
+threshold is reported as unreadable, in Bangla, with the instruction to
+upload the original. `tests/test_legibility.py` covers the measurement with
+the real engine, in both directions.
+
+The measurement is taken against the picture the engine actually saw, so a
+phone photo stored sideways is not measured against the wrong side.
 
 **2. The parser turned noise into results.** A line only became a result if it
 had a name and something that looked like a reference range - and an
@@ -175,7 +181,8 @@ reply was cut off in the middle of an object and the whole explanation stage
 failed with "the shape of the AI reply could not be read". The budget is now
 `AI_MAX_TOKENS` (8192 by default, clamped to 256..32768) and a truncated
 reply keeps every complete object it contains, dropping only the incomplete
-trailing one.
+trailing one. A reply that covered only some of the results is reported as an
+incomplete answer, not as an error and not as a complete one.
 
 **4. A misread heading disabled the whole table.** The heading was read as
 `Reams` instead of `Results`, so no table could be recognised and the flat
