@@ -119,3 +119,20 @@ export function deleteReport(reportId) {
     'রিপোর্ট মুছে ফেলা যায়নি।',
   )
 }
+
+/**
+ * Read a report and return the text exactly as the reader made it.
+ *
+ * Nothing is interpreted and no AI is called: this is the raw reading, with
+ * the measurements that explain it.
+ */
+export function readReportText(file) {
+  const form = new FormData()
+  form.append('file', file)
+
+  return withTimeout(
+    fetch(`${API_BASE}/api/reports/read-text`, { method: 'POST', body: form }).then(parse),
+    180000,
+    'লেখা পড়া যায়নি।',
+  )
+}
