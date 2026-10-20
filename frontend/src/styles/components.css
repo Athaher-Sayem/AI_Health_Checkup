@@ -714,6 +714,24 @@
   font-size: var(--fs-14);
 }
 
+.warning-list {
+  margin: var(--space-4) 0;
+  padding: var(--space-4);
+  background: var(--warn-soft);
+  border: 1px solid color-mix(in srgb, var(--warn) 25%, transparent);
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.warning-item {
+  font-size: var(--fs-14);
+  color: var(--text);
+  line-height: var(--lh-body);
+}
+
 .disclaimer {
   margin-top: var(--space-10);
   padding: var(--space-5);

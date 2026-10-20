@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import io
 import logging
+import os
 
 from PIL import Image, ImageOps
 
@@ -54,14 +55,21 @@ def _tesseract_binary_present() -> bool:
 
 
 def _apply_tesseract_path() -> None:
-    """Point pytesseract at a configured binary.
+    """Point pytesseract at a configured binary and language-data folder.
 
     On Windows Tesseract is usually not on PATH, so TESSERACT_CMD can name the
-    executable directly.
+    executable directly. TESSDATA_DIR is needed when the language packs live
+    outside the engine's own ``tessdata`` folder.
     """
-    configured = get_settings().tesseract_cmd.strip()
+    settings = get_settings()
+
+    configured = settings.tesseract_cmd.strip()
     if configured:
         pytesseract.pytesseract.tesseract_cmd = configured
+
+    tessdata = settings.tessdata_dir.strip()
+    if tessdata:
+        os.environ["TESSDATA_PREFIX"] = tessdata
 
 
 def is_available() -> bool:

@@ -440,6 +440,83 @@ def _looks_like_unit(cell: str) -> bool:
     return True
 
 
+#: A status word a report may print in its own verdict column.
+_FLAG_TOKENS = {
+    "h",
+    "l",
+    "n",
+    "high",
+    "low",
+    "normal",
+    "abnormal",
+    "critical",
+    "panic",
+}
+
+#: Short verdict markers a report prints in a narrow flag column.
+_FLAG_MARKERS = {
+    "h",
+    "l",
+    "n",
+    "high",
+    "low",
+    "normal",
+    "abnormal",
+    "critical",
+    "panic",
+}
+
+
+def _strip_trailing_flag(text: str) -> tuple[str, str | None]:
+    """Remove a trailing verdict marker such as ``H``/``Low`` from a row.
+
+    Only short verdict words are removed. Qualitative results such as
+    ``Negative`` are left in place, because for those the verdict *is* the
+    result.
+
+    Returns ``(remaining_text, flag)``.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return stripped, None
+
+    parts = stripped.rsplit(None, 1)
+    if len(parts) != 2:
+        return stripped, None
+
+    tail = parts[1].strip().strip(".,;:()[]")
+    if tail.lower() in _FLAG_MARKERS:
+        return parts[0], parts[1].strip()
+    return stripped, None
+
+
+def _is_ocr_noise_token(token: str) -> bool:
+    """True when a token is punctuation noise OCR left between two fields."""
+    text = token.strip()
+    if not text:
+        return True
+    return not re.search(r"[A-Za-z0-9\u0980-\u09FF]", text)
+
+
+def _looks_like_unit_token(token: str) -> bool:
+    """Looser unit check for flat rows, where the unit follows the number.
+
+    OCR text carries no column padding, so ``MCV 88.4 fl`` puts the unit
+    directly after the number. A short alphabetic token such as ``fl`` is a
+    valid unit here, unlike in the column-aligned path where it would be
+    ambiguous with a status word.
+    """
+    text = token.strip()
+    if not text or len(text) > 14:
+        return False
+    if text.lower() in _FLAG_MARKERS:
+        return False
+    if re.fullmatch(r"[A-Za-z]{2,}", text):
+        # Two-letter words that are genuine units.
+        return text.lower() in {"mm", "cm", "fl", "pg", "ms", "ml", "kg", "iu"}
+    return bool(_UNIT_TOKEN_RE.match(text)) and not re.fullmatch(NUMBER, text)
+
+
 def _unit_from_trailing_cell(value_cells: list[str]) -> str | None:
     """Find a unit cell sitting immediately after the value cell."""
     for position, cell in enumerate(value_cells):
@@ -459,7 +536,10 @@ def _extract_candidate_from_line(line: str, page: int) -> _Candidate | None:
 
     cells = split_row(line)
     if len(cells) < 2:
-        return None
+        # A single cell means the row has no column padding at all. That is
+        # the normal shape of OCR output, so try the flat parser before
+        # giving up on the line.
+        return _extract_flat_candidate(line, page)
 
     # Drop a leading sequence-number column ("1", "2", ...).
     index = 0
@@ -531,6 +611,122 @@ def _extract_candidate_from_line(line: str, page: int) -> _Candidate | None:
         raw_line=line.strip(),
         page=page,
         qualitative=qualitative,
+        flag_text=flag_text,
+    )
+
+
+# --------------------------------------------------------------------------
+# Flat-row parsing (OCR output)
+# --------------------------------------------------------------------------
+
+#: A value token: an optional sign, digits with optional thousands separators,
+#: an optional decimal part, and an optional unit glued to it.
+_FLAT_VALUE_RE = re.compile(
+    rf"^(?P<num>[-+]?(?:\d{{1,3}}(?:,\d{{3}})+|\d+)(?:\.\d+)?)"
+    rf"(?P<unit>[^\s\d,;|]*)$"
+)
+
+#: A cell that is only a number.
+_FLAT_PURE_NUMBER_RE = re.compile(
+    rf"^(?P<num>[-+]?(?:\d{{1,3}}(?:,\d{{3}})+|\d+)(?:\.\d+)?)$"
+)
+
+
+def _extract_flat_candidate(line: str, page: int) -> _Candidate | None:
+    """Parse a row whose columns are separated by single spaces.
+
+    OCR output loses the column padding that a text PDF keeps, so a row
+    arrives as ``Hemoglobin 10.2 g/dL 12.0-16.0 g/dL L``. This parser
+    recovers the same fields the column-aligned parser would.
+
+    The order in a lab report row is stable: name, then value, then unit,
+    then the reference range, then an optional verdict marker. Working from
+    the right lets each field be identified without guessing.
+    """
+    text = line.strip()
+    if not text:
+        return None
+
+    # 1. Peel off a trailing verdict marker ("L", "High", ...).
+    text, flag_text = _strip_trailing_flag(text)
+
+    # 2. Peel off the reference range the report printed.
+    reference_text = None
+    range_span, remainder = find_reference_span(text)
+    if range_span:
+        parsed = parse_reference_range(range_span)
+        if parsed is not None:
+            reference_text = parsed.raw_text
+            text = remainder
+    else:
+        remainder = text
+
+    # 3. Peel off the value and its unit, which sit at the end of what is
+    #    left once the range and the flag are gone.
+    tokens = remainder.split()
+    if not tokens:
+        return None
+
+    value: float | None = None
+    value_text: str | None = None
+    unit: str | None = None
+    name_tokens: list[str] = []
+    value_position = -1
+
+    # Walk backwards over the tokens to find the measured value.
+    for position in range(len(tokens) - 1, -1, -1):
+        token = tokens[position]
+
+        pure = _FLAT_PURE_NUMBER_RE.match(token)
+        if pure:
+            value = _to_float(pure.group("num"))
+            value_text = pure.group("num")
+            value_position = position
+            name_tokens = tokens[:position]
+            break
+
+        glued = _FLAT_VALUE_RE.match(token)
+        if glued and _looks_like_unit_token(glued.group("unit") or ""):
+            value = _to_float(glued.group("num"))
+            value_text = glued.group("num")
+            unit = (glued.group("unit") or "").strip() or None
+            value_position = position
+            name_tokens = tokens[:position]
+            break
+
+    if value is None or value_position <= 0 or not name_tokens:
+        return None
+
+    # In a report row the unit follows the value: "Hemoglobin 10.2 g/dL".
+    # OCR sometimes inserts a stray separator ("11,500 = /cumm"), so a couple
+    # of the following tokens are considered before giving up on the unit.
+    if unit is None:
+        for offset in (1, 2):
+            position = value_position + offset
+            if position >= len(tokens):
+                break
+            following = tokens[position]
+            if _looks_like_unit_token(following):
+                unit = following.strip()
+                break
+            if not _is_ocr_noise_token(following):
+                break
+
+    name = _clean_name(" ".join(name_tokens))
+    if not name or not re.search(r"[A-Za-z\u0980-\u09FF]", name):
+        return None
+    if len(name) > 120:
+        return None
+
+    return _Candidate(
+        name=name,
+        value=value,
+        value_text=value_text,
+        unit=unit,
+        reference_text=reference_text,
+        raw_line=line.strip(),
+        page=page,
+        qualitative=False,
         flag_text=flag_text,
     )
 

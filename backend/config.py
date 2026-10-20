@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     #: Full path to the Tesseract binary. Only needed when it is not on PATH
     #: (the common case on Windows).
     tesseract_cmd: str = Field(default="", alias="TESSERACT_CMD")
+    #: Folder holding the *.traineddata language files. Only needed when the
+    #: language packs are not in the engine's own tessdata folder.
+    tessdata_dir: str = Field(default="", alias="TESSDATA_DIR")
 
     @field_validator("max_upload_size_mb")
     @classmethod

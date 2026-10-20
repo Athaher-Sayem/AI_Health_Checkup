@@ -171,6 +171,16 @@ export default function ResultsPage({ reportId, onReset }) {
         </p>
       ) : null}
 
+      {data.meta?.warnings?.length ? (
+        <div className="warning-list" role="status">
+          {data.meta.warnings.map((warning, index) => (
+            <p className="warning-item" key={index}>
+              {warning}
+            </p>
+          ))}
+        </div>
+      ) : null}
+
       {data.validation?.contradictions?.length ? (
         <p className="notice">
           AI ব্যাখ্যায় অসামঞ্জস্য পাওয়া গিয়েছিল, তাই সঠিক তথ্য দিয়ে আবার তৈরি করা হয়েছে।
