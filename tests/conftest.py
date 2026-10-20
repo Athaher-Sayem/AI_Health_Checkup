@@ -21,10 +21,16 @@ from backend.services import extractor  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
-def clean_temp_files():
+def clean_temp_files(tmp_path, monkeypatch):
     """Temp uploads never leak between tests."""
     from backend.utils import file_handler
 
+    def isolated_root():
+        root = tmp_path / "uploads"
+        root.mkdir(parents=True, exist_ok=True)
+        return root
+
+    monkeypatch.setattr(file_handler, "_temp_root", isolated_root)
     file_handler.purge_all_temp_files()
     yield
     file_handler.purge_all_temp_files()
