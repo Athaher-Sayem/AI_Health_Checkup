@@ -93,6 +93,27 @@ def test_the_pipeline_warns_when_the_picture_is_too_small(client, no_ai, monkeyp
     assert data["results"] == []
 
 
+def test_the_warning_appears_even_when_nothing_survived_the_reading(
+    client, no_ai, monkeypatch
+):
+    """A picture that is too small explains itself even if no text survived."""
+    monkeypatch.setattr(
+        ocr,
+        "read_image",
+        lambda data: ocr.OcrReading(text="", confidence=None, text_height_px=5.5),
+    )
+    response = client.post(
+        "/api/reports/upload",
+        files={"file": ("small.png", rendered_text("Haemoglobin", size=8), "image/png")},
+    )
+    report_id = response.json()["report_id"]
+
+    data = client.post("/api/reports/analyze", json={"report_id": report_id}).json()
+
+    assert ocr.LOW_RESOLUTION_WARNING in data["meta"]["warnings"]
+    assert data["results"] == []
+
+
 def test_the_pipeline_does_not_warn_for_a_readable_picture(client, no_ai, monkeypatch):
     monkeypatch.setattr(
         ocr,
