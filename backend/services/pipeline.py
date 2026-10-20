@@ -73,6 +73,8 @@ def _explain(results, meta: ExtractionMeta):
 
     Returns ``(explanations, validation_report, ai_enabled, ai_error)``.
     """
+    if not results:
+        return [], medical_explainer.empty_validation(results), False, None
     if not get_settings().has_ai_key:
         return (
             [],
@@ -137,6 +139,15 @@ def analyze_upload(upload: TempUpload) -> ReportRecord:
     results = validator.apply_validation(extraction.results)
     counts = validator.count_results(results)
     groups = validator.group_results(results)
+    if any(page.ocr_used for page in pages):
+        warnings.append(
+            "ছবি থেকে স্বয়ংক্রিয়ভাবে পড়া মান, একক ও সীমা মূল রিপোর্টের সঙ্গে মিলিয়ে দেখুন। "
+            "সব সারি সম্পূর্ণ পড়া গেছে কি না নিশ্চিত করা যায়নি।"
+        )
+        if counts.unknown:
+            warnings.append(
+                "কিছু ফলাফলের মান, একক বা সীমা অনিশ্চিত। এগুলোর অবস্থা অনুমান করা হয়নি।"
+            )
 
     meta = ExtractionMeta(
         document_kind=kind,
