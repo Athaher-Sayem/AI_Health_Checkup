@@ -563,7 +563,7 @@ def _valid_name(name: str) -> bool:
 def _valid_unit(text: str) -> bool:
     """Recognize complete units, including count scales containing digits."""
     normalized = text.strip().lower().replace("μ", "µ")
-    if normalized in _KNOWN_UNITS or normalized in {"gm%", "/cumm", "/cu.mm", "cells/µl", "pg/ml"}:
+    if normalized in _KNOWN_UNITS or normalized in {"gm%", "/cumm", "/cu.mm", "/ul", "/µl", "cells/µl", "pg/ml"}:
         return True
     return bool(re.fullmatch(
         r"(?:million|thousand|cells)\s*/\s*(?:cu\s*mm|cumm|mm3|[uµ]l)|"
@@ -793,7 +793,7 @@ def extract_tests(pages: list[PageText]) -> ExtractionOutput:
             continue
 
         for raw_line in text.splitlines():
-            line = raw_line.strip()
+            line = raw_line.strip(" \r")
             if not line:
                 continue
 
