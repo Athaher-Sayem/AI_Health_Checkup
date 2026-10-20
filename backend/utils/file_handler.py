@@ -39,6 +39,25 @@ _MAGIC: tuple[tuple[bytes, str], ...] = (
 _SAFE_EXTRA_CHARS = frozenset("._- ")
 
 
+#: Formats that are documents rather than images. Everything else the
+#: allowlist accepts is read as an image.
+DOCUMENT_EXTENSIONS: frozenset[str] = frozenset({".pdf"})
+
+#: A report photograph is at most a few megapixels. The limit is set above a
+#: 48 megapixel phone camera, because refusing a real photograph would be
+#: worse than decoding a large one. It still refuses an image bomb, which
+#: describes an enormous picture in a tiny file.
+MAX_IMAGE_PIXELS = 60_000_000
+
+
+def _basename(name: str | None) -> str:
+    """The last path segment of a client-supplied name.
+
+    Pure string handling: the name is never used as a path.
+    """
+    return (name or "").replace("\\", "/").split("/")[-1]
+
+
 def _is_safe_name_char(char: str) -> bool:
     """True when a character may appear in the name shown to the user."""
     if char in _SAFE_EXTRA_CHARS:
@@ -60,7 +79,7 @@ def sanitize_filename(filename: str | None) -> str:
     non-ASCII run such as ``রিপোর্ট`` and would hide the real format.
     """
     raw = (filename or "").strip() or "report"
-    raw = raw.replace("\\", "/").split("/")[-1]
+    raw = _basename(raw)
     stem = Path(raw).stem or raw
     cleaned = "".join(
         char if _is_safe_name_char(char) else "_" for char in stem
@@ -76,7 +95,7 @@ def _raw_extension(filename: str | None) -> str:
     leading non-ASCII run and would leave a Bangla filename with no
     extension at all.
     """
-    raw = (filename or "").replace("\\", "/").split("/")[-1]
+    raw = _basename(filename)
     return Path(raw).suffix.lower()
 
 
@@ -86,10 +105,20 @@ def verify_image(path: Path) -> None:
     The container check proves the bytes look like an image; this proves the
     image can actually be opened, so a broken file is refused at upload
     instead of failing later on the results screen.
+
+    The pixel count is checked before decoding, because a small file can
+    describe an enormous image and decoding it would cost far more memory
+    than the upload itself.
     """
     try:
         with Image.open(path) as image:
+            if image.width * image.height > MAX_IMAGE_PIXELS:
+                raise UploadError(
+                    "ছবির সাইজ অনেক বড়। ছোট করে আবার আপলোড করুন।"
+                )
             image.load()
+    except UploadError:
+        raise
     except Exception as exc:
         raise UploadError(
             "ছবিটি পড়া যায়নি। ফাইলটি ক্ষতিগ্রস্ত হতে পারে।"
