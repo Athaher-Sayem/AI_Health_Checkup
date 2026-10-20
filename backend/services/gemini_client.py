@@ -14,10 +14,16 @@ import logging
 import urllib.error
 import urllib.request
 
-from backend.config import get_settings
+from backend.config import DEFAULT_AI_MAX_TOKENS, get_settings
 from backend.services.medical_explainer import SYSTEM_INSTRUCTION
 
 logger = logging.getLogger(__name__)
+
+#: Token budget for one reply. A real CBC report has ~19 result rows and each
+#: row needs three short Bangla paragraphs, so the old hardcoded 2048 cut the
+#: answer off in the middle of an object and failed the whole AI stage.
+#: Overridable with the ``AI_MAX_TOKENS`` environment variable.
+MAX_TOKENS = DEFAULT_AI_MAX_TOKENS
 
 #: Gemini's generateContent endpoint.
 _ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -79,6 +85,7 @@ def _call_openai_compatible(settings, prompt: str) -> str:
     base = settings.ai_base_url.strip().rstrip("/")
     url = base + "/chat/completions"
     model = settings.ai_model.strip() or "deepseek-v4.1-flash"
+    max_tokens = getattr(settings, "ai_max_tokens", None) or MAX_TOKENS
     body = {
         "model": model,
         "messages": [
@@ -86,7 +93,7 @@ def _call_openai_compatible(settings, prompt: str) -> str:
             {"role": "user", "content": prompt},
         ],
         "temperature": 0.2,
-        "max_tokens": 2048,
+        "max_tokens": max_tokens,
         "response_format": {"type": "json_object"},
     }
     request = urllib.request.Request(
