@@ -75,6 +75,62 @@ def _build_payload(model: str, prompt: str) -> dict:
     }
 
 
+def _call_openai_compatible(settings, prompt: str) -> str:
+    base = settings.ai_base_url.strip().rstrip("/")
+    url = base + "/chat/completions"
+    model = settings.ai_model.strip() or "deepseek-v4.1-flash"
+    body = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": SYSTEM_INSTRUCTION},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.2,
+        "max_tokens": 4096,
+        "response_format": {"type": "json_object"},
+    }
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode("utf-8"),
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + settings.ai_api_key.strip(),
+            "User-Agent": "AI-Health-Explainer/1.0",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=settings.ai_timeout_seconds) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        logger.warning("AI HTTP error: %s", exc.code)
+        raise GeminiError(
+            "AI সেবায় সমস্যা হয়েছে। ফলাফলগুলো রিপোর্টের লেখা থেকে দেখানো হয়েছে।"
+        ) from exc
+    except urllib.error.URLError as exc:
+        logger.warning("AI network error: %s", exc.reason)
+        raise GeminiError(
+            "AI সেবায় পৌঁছানো যায়নি। ফলাফলগুলো রিপোর্টের লেখা থেকে দেখানো হয়েছে।"
+        ) from exc
+    except TimeoutError as exc:
+        logger.warning("AI request timed out")
+        raise GeminiError("AI উত্তর দিতে সময় লেগেছে।") from exc
+    except json.JSONDecodeError as exc:
+        logger.warning("AI returned non-JSON body")
+        raise GeminiError("AI উত্তরের বিন্যাস বোঝা যায়নি।") from exc
+
+    choices = data.get("choices") or []
+    if not choices:
+        raise GeminiError("AI থেকে কোনো উত্তর পাওয়া যায়নি।")
+    msg = choices[0].get("message", {}) or {}
+    text = msg.get("content", "")
+    if not text or not str(text).strip():
+        text = msg.get("reasoning_content", "")
+    if not text or not str(text).strip():
+        raise GeminiError("AI থেকে খালি উত্তর এসেছে।")
+    return str(text)
+
+
 def call_gemini(prompt: str) -> str:
     """Call Gemini with ``prompt`` and return the raw text response.
 
@@ -82,6 +138,11 @@ def call_gemini(prompt: str) -> str:
     the response carries no usable text.
     """
     settings = get_settings()
+
+    # OpenAI-compatible provider (e.g. larprouter.com) takes precedence when
+    # configured, so the project can be tested with free models.
+    if settings.ai_api_key.strip() and settings.ai_base_url.strip():
+        return _call_openai_compatible(settings, prompt)
 
     if not settings.has_gemini_key:
         raise GeminiError("AI ব্যাখ্যার জন্য API key সেট করা নেই।")

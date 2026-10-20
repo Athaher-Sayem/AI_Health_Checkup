@@ -1,0 +1,24 @@
+# Taste — working with this user
+- Wants a commit and a push to their GitHub after **every small change**, not one big commit at the end. Confidence: 0.95
+- Delivers work in explicit, ordered phases and expects the build to follow that order rather than jumping ahead. Confidence: 0.8
+- Treats a complete README (architecture, install, service setup, pipeline, safety, privacy) as a required deliverable, not a nice-to-have. Confidence: 0.85
+- Expects a test suite covering the named scenarios they list, run and passing before the work is called done. Confidence: 0.9
+- Expects the work to be genuinely finished: run the suite, build the frontend, exercise the app end-to-end, then report what was actually verified. Confidence: 0.85
+- Primary environment is Windows (cmd.exe / PowerShell) with both Python and Node available. Keep in mind: no heredocs, and non-ASCII console output needs explicit UTF-8. Confidence: 0.8
+- **Never let an LLM decide anything verifiable.** Numeric and factual judgments belong in deterministic code; the model's job is prose only. Confidence: 0.95
+- Build a validation layer between model output and the user: check the model against the deterministic result, and never let the model override it. Confidence: 0.9
+- **Do not guess, and do not fabricate.** When information is missing, emit an explicit `unknown` state rather than a plausible value — and keep the row visible instead of silently dropping it. Confidence: 0.9
+- Never substitute a generic or built-in default for data the user's own document supplies; prefer the document's value even when a default seems safer. Confidence: 0.85
+- Never invent metrics or benchmarks. If accuracy is claimed, the dataset and methodology must be described explicitly; otherwise say what was and was not measured. Confidence: 0.95
+- Secrets: environment only, never hard-coded, never returned from an API, and `.env` belongs in `.gitignore`. Confidence: 0.95
+- Sensitive/personal data: no permanent storage, delete temp files when processing ends (including on failure), never log contents, and expose an explicit delete path. Confidence: 0.9
+- Degrade gracefully: reject unsupported and corrupted inputs with clear messages, and keep the app working when optional dependencies are missing. Confidence: 0.8
+- Verify documentation claims against the code before shipping; a doc that describes a feature the code lacks is a bug to fix. Confidence: 0.8
+- Backend: Python + FastAPI + Pydantic, with a modular service layer rather than one large module. Confidence: 0.8
+- Frontend: React with simple modern CSS — explicitly no UI framework and no over-design. Confidence: 0.85
+- Split projects into `backend/` and `frontend/` with tests at the repo root. Confidence: 0.75
+- Prefers keys, models, and limits to be configurable via environment variables rather than hard-coded constants. Confidence: 0.8
+- Writes exhaustive, structured specs with numbered sections and explicit MUST / MUST NOT lists. Treat every clause as a requirement to satisfy, not as background context. Confidence: 0.9
+- Builds acceptance criteria and edge cases into the spec (unsupported file, corrupted file, missing data, model contradicting itself) and expects each one handled and tested. Confidence: 0.9
+- In regulated or high-stakes domains, wants safety framing surfaced explicitly in the product — disclaimers, cautious language, and a clear statement of what the tool does not do. Confidence: 0.8
+- Communicates in English even when the product's user-facing language is something else. Confidence: 0.7

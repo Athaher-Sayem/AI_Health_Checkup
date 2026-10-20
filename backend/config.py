@@ -35,6 +35,14 @@ class Settings(BaseSettings):
         default=90, alias="GEMINI_TIMEOUT_SECONDS", ge=10, le=300
     )
 
+    # --- OpenAI-compatible provider (e.g. larprouter.com) ---
+    ai_api_key: str = Field(default="", alias="AI_API_KEY")
+    ai_base_url: str = Field(default="", alias="AI_BASE_URL")
+    ai_model: str = Field(default="", alias="AI_MODEL")
+    ai_timeout_seconds: int = Field(
+        default=90, alias="AI_TIMEOUT_SECONDS", ge=10, le=300
+    )
+
     # --- Uploads ---
     max_upload_size_mb: int = Field(default=12, alias="MAX_UPLOAD_SIZE_MB", ge=1, le=50)
 
@@ -62,9 +70,17 @@ class Settings(BaseSettings):
 
     @property
     def has_gemini_key(self) -> bool:
-        """True only when a non-placeholder key is configured."""
+        """True only when a non-placeholder Gemini key is configured."""
         key = self.gemini_api_key.strip()
         return bool(key) and key.lower() not in {"your_api_key_here", "changeme"}
+
+    @property
+    def has_ai_key(self) -> bool:
+        """True when any usable AI provider key is configured."""
+        if self.has_gemini_key:
+            return True
+        key = self.ai_api_key.strip()
+        return bool(key) and key.lower() not in {"your_api_key_here", "changeme"} and bool(self.ai_base_url.strip())
 
     @property
     def ocr_lang_list(self) -> list[str]:

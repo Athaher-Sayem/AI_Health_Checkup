@@ -73,7 +73,7 @@ def _explain(results, meta: ExtractionMeta):
 
     Returns ``(explanations, validation_report, ai_enabled, ai_error)``.
     """
-    if not get_settings().has_gemini_key:
+    if not get_settings().has_ai_key:
         return (
             [],
             medical_explainer.empty_validation(results, checked=False),

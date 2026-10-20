@@ -44,6 +44,8 @@ def clean_store():
 def no_ai(monkeypatch):
     """Guarantee the AI stage is disabled regardless of the local .env."""
     monkeypatch.setenv("GEMINI_API_KEY", "")
+    monkeypatch.setenv("AI_API_KEY", "")
+    monkeypatch.setenv("AI_BASE_URL", "")
     from backend.config import get_settings
 
     get_settings.cache_clear()

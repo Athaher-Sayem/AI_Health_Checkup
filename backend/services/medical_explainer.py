@@ -79,7 +79,7 @@ class GeminiUnavailableError(RuntimeError):
 
 def is_configured() -> bool:
     """True when a real API key is present."""
-    return get_settings().has_gemini_key
+    return get_settings().has_ai_key
 
 
 # --------------------------------------------------------------------------
