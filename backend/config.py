@@ -15,6 +15,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 BACKEND_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BACKEND_DIR.parent
 
+#: Default token budget for one AI reply. A full CBC report has ~19 result rows
+#: and each row asks for three Bangla paragraphs, so the old hardcoded 2048
+#: cut the answer off mid-object and broke the whole AI stage.
+DEFAULT_AI_MAX_TOKENS = 8192
+
+#: Bounds for that budget. Too small truncates the answer, too large lets one
+#: request balloon for no benefit.
+AI_MAX_TOKENS_MIN = 256
+AI_MAX_TOKENS_MAX = 32768
+
 
 class Settings(BaseSettings):
     """Runtime settings loaded from environment variables or a .env file."""
@@ -42,6 +52,9 @@ class Settings(BaseSettings):
     ai_timeout_seconds: int = Field(
         default=90, alias="AI_TIMEOUT_SECONDS", ge=10, le=300
     )
+    #: How many tokens the model may use for one reply. Overridable with the
+    #: ``AI_MAX_TOKENS`` environment variable; clamped to a sane range.
+    ai_max_tokens: int = Field(default=DEFAULT_AI_MAX_TOKENS, alias="AI_MAX_TOKENS")
 
     # --- Uploads ---
     max_upload_size_mb: int = Field(default=12, alias="MAX_UPLOAD_SIZE_MB", ge=1, le=50)
@@ -66,6 +79,16 @@ class Settings(BaseSettings):
         if value < 1:
             raise ValueError("max_upload_size_mb must be at least 1")
         return value
+
+    @field_validator("ai_max_tokens")
+    @classmethod
+    def _clamp_ai_max_tokens(cls, value: int) -> int:
+        """Keep the token budget inside the supported range.
+
+        Clamped rather than rejected: a too-small value would silently
+        truncate the answer again, and a too-large one only wastes budget.
+        """
+        return max(AI_MAX_TOKENS_MIN, min(AI_MAX_TOKENS_MAX, value))
 
     @property
     def max_upload_size_bytes(self) -> int:
