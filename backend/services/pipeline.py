@@ -62,7 +62,7 @@ def _read_document(upload: TempUpload) -> tuple[list[PageText], DocumentKind, li
         warnings.append(f"ছবির লেখা পড়া যায়নি ({exc})।")
         text, confidence = "", None
     else:
-        if text.strip() and not reading.is_legible:
+        if reading.text_height_px is not None and not reading.is_legible:
             # The picture was too small to read. Say so, instead of letting
             # invented rows look like results.
             warnings.append(ocr.LOW_RESOLUTION_WARNING)

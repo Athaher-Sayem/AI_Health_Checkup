@@ -118,7 +118,7 @@ def extract_pdf(path: str, ocr_scanned_pages: bool = True) -> PdfResult:
                 )
                 continue
 
-            if ocr_text.strip() and not reading.is_legible:
+            if reading.text_height_px is not None and not reading.is_legible:
                 result.warnings.append(
                     f"পৃষ্ঠা {page_number}: {ocr.LOW_RESOLUTION_WARNING}"
                 )
