@@ -68,7 +68,7 @@ async def upload_report(file: UploadFile = File(...)) -> UploadResponse:
 
     # A PDF we cannot open is rejected now rather than after upload, so the
     # user finds out immediately instead of on the results screen.
-    if upload.extension == ".pdf":
+    if upload.extension in file_handler.DOCUMENT_EXTENSIONS:
         try:
             with fitz.open(str(upload.path)) as document:
                 if document.needs_pass:
@@ -87,9 +87,10 @@ async def upload_report(file: UploadFile = File(...)) -> UploadResponse:
             ) from None
     else:
         # An image whose bytes only look like an image is refused now, so the
-        # user finds out immediately instead of on the results screen.
+        # user finds out immediately instead of on the results screen. The
+        # decode runs in a worker thread: it must not block the event loop.
         try:
-            file_handler.verify_image(upload.path)
+            await run_in_threadpool(file_handler.verify_image, upload.path)
         except file_handler.UploadError as exc:
             upload.cleanup()
             raise HTTPException(status_code=400, detail=str(exc)) from exc
