@@ -662,7 +662,15 @@ def _extract_candidate_from_line(line: str, page: int) -> _Candidate | None:
     # A unit outside the recognized grammar cannot establish a reliable scale.
     if unit and not _valid_unit(unit):
         value = None
-    if not _has_result_evidence(value, qualitative, unit, reference_text):
+    if explicit:
+        # The geometry established four cells in a recognised table, so the
+        # layout has already decided this row is worth keeping. Only an
+        # entirely empty row is dropped.
+        if not (value is not None or qualitative or unit or reference_text):
+            return None
+    elif not _has_result_evidence(value, qualitative, unit, reference_text):
+        # Without geometry the columns are a guess, so a row has to contain
+        # something readable before it may be shown as a result.
         return None
 
     return _Candidate(
