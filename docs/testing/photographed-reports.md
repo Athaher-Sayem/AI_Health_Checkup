@@ -116,12 +116,24 @@ Three further rules apply, each with a regression test:
   separators, control characters and bidirectional overrides are replaced.
 
 The frontend reads the accepted list from `/api/health` instead of repeating
-it, so the file picker cannot drift away from what the API accepts.
+it, so the file picker cannot drift away from what the API accepts. The same
+response reports which of those formats are read as images, so the interface
+never has to guess.
+
+Two limits protect the server, and both are checked before the image is
+decoded:
+
+- The decode runs in a worker thread, so a large upload does not block the
+  event loop while every other request waits.
+- The pixel count is checked before decoding, and a file that describes more
+  than 60 megapixels is refused. The limit sits above a 48 megapixel phone
+  camera, because refusing a real photograph would be worse than decoding a
+  large one.
 
 Verification: `tests/test_image_formats.py` covers WebP acceptance, WebP
 analysis, a renamed PNG rejected as `.webp`, a non-WebP RIFF container
 rejected, JPEG/PNG staying accepted, Bangla filenames, undecodable images,
-and the display-name rules.
+hostile file names, the pixel limit, and the display-name rules.
 
 ## Limits
 
