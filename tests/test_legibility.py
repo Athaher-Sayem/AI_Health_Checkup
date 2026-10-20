@@ -56,6 +56,49 @@ def test_a_picture_without_any_readable_word_is_not_legible():
     assert reading.is_legible is False
 
 
+def test_tall_meaningless_boxes_do_not_make_a_picture_legible():
+    """Unreadable text produces tall boxes; the engine's confidence says so."""
+    reading = ocr.OcrReading(
+        text="AQT miaviourm 2848",
+        confidence=0.3,
+        text_height_px=14.0,
+        word_confidence=30.0,
+    )
+
+    assert reading.is_legible is False
+
+
+def test_a_confident_reading_is_legible():
+    reading = ocr.OcrReading(
+        text="Haemoglobin 12.9 gm%",
+        confidence=0.95,
+        text_height_px=12.0,
+        word_confidence=95.0,
+    )
+
+    assert reading.is_legible is True
+
+
+def test_a_photo_stored_sideways_is_measured_against_what_the_engine_saw():
+    """An EXIF-rotated phone photo must not be measured against the wrong side."""
+    image = Image.new("RGB", (1000, 750), color="white")
+    ImageDraw.Draw(image).text((40, 40), "Haemoglobin 12.9 gm%", fill="black")
+
+    plain = io.BytesIO()
+    image.save(plain, format="JPEG")
+
+    exif = Image.Exif()
+    exif[274] = 6  # rotate the picture a quarter turn when it is displayed
+    sideways = io.BytesIO()
+    image.save(sideways, format="JPEG", exif=exif)
+
+    _, plain_scale = ocr._preprocess(plain.getvalue())
+    _, sideways_scale = ocr._preprocess(sideways.getvalue())
+
+    # The same picture in both files: the scale must not depend on the flag.
+    assert sideways_scale == pytest.approx(plain_scale, rel=0.01)
+
+
 def test_shrunken_text_is_measured_too_small_to_read():
     """Real engine, real image: the text height is measured, not guessed."""
     small = ocr.read_image(rendered_text("Haemoglobin 12.9 gm%", size=8))
@@ -79,6 +122,7 @@ def test_the_pipeline_warns_when_the_picture_is_too_small(client, no_ai, monkeyp
             text="Awe Sd Repon Dace 08/09/2025",
             confidence=0.2,
             text_height_px=5.5,
+            word_confidence=42.0,
         ),
     )
     response = client.post(
@@ -90,6 +134,33 @@ def test_the_pipeline_warns_when_the_picture_is_too_small(client, no_ai, monkeyp
     data = client.post("/api/reports/analyze", json={"report_id": report_id}).json()
 
     assert ocr.LOW_RESOLUTION_WARNING in data["meta"]["warnings"]
+    assert data["results"] == []
+
+
+def test_an_unreadable_picture_reports_no_results_at_all(
+    client, no_ai, monkeypatch
+):
+    """A picture that could not be read must not report what it guessed."""
+    monkeypatch.setattr(
+        ocr,
+        "read_image",
+        lambda data: ocr.OcrReading(
+            text="Haemoglobin 12.9 gm% 12-16gm%\nWBC 5,900 cells/cumm 4000-10000",
+            confidence=0.3,
+            text_height_px=5.5,
+            word_confidence=42.0,
+        ),
+    )
+    response = client.post(
+        "/api/reports/upload",
+        files={"file": ("small.png", rendered_text("Haemoglobin", size=8), "image/png")},
+    )
+    report_id = response.json()["report_id"]
+
+    data = client.post("/api/reports/analyze", json={"report_id": report_id}).json()
+
+    assert ocr.LOW_RESOLUTION_WARNING in data["meta"]["warnings"]
+    assert data["counts"]["total"] == 0
     assert data["results"] == []
 
 
