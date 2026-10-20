@@ -572,6 +572,29 @@ def _valid_unit(text: str) -> bool:
     ))
 
 
+def _has_result_evidence(
+    value: float | None,
+    qualitative: bool,
+    unit: str | None,
+    reference_text: str | None,
+) -> bool:
+    """True when something readable was actually taken from the row.
+
+    OCR noise can imitate a table row: a word, another word, then a stray
+    number. Without a measurement, a recognised unit or a readable reference
+    range, the line is not a laboratory result and must not be shown as one.
+    """
+    if value is not None or qualitative:
+        return True
+    if unit and _valid_unit(unit):
+        return True
+    if reference_text:
+        parsed = parse_reference_range(reference_text)
+        if parsed is not None and parsed.parsed:
+            return True
+    return False
+
+
 def _extract_candidate_from_line(line: str, page: int) -> _Candidate | None:
     """Parse one report line into a candidate row, or return None."""
     if _looks_like_noise(line):
@@ -639,7 +662,7 @@ def _extract_candidate_from_line(line: str, page: int) -> _Candidate | None:
     # A unit outside the recognized grammar cannot establish a reliable scale.
     if unit and not _valid_unit(unit):
         value = None
-    if value is None and not qualitative and not reference_text:
+    if not _has_result_evidence(value, qualitative, unit, reference_text):
         return None
 
     return _Candidate(
@@ -739,10 +762,10 @@ def _extract_flat_candidate(line: str, page: int) -> _Candidate | None:
     elif qualitative and qualitative.start() >= end:
         reference_text = text[qualitative.start():].strip()
         tail = text[end:qualitative.start()].strip()
-    unit = tail.strip(" =_—") or None
+    unit = tail.strip(" =_-") or None
     if unit and not _valid_unit(unit):
         return None
-    if value is None and not reference_text:
+    if not _has_result_evidence(value, False, unit, reference_text):
         return None
 
     return _Candidate(
