@@ -459,6 +459,11 @@ Medical reports are sensitive. The following are enforced by tests in
 
 Accepts the report. Returns a `report_id` used by the other endpoints.
 
+**Accepted formats:** PDF, JPG, JPEG, PNG and WebP, up to
+`MAX_UPLOAD_SIZE_MB` (12 MB by default). The format is confirmed from the
+file's own bytes, so a renamed file is rejected. WebP is a RIFF container and
+only its `WEBP` form type counts, which keeps WAV and AVI files out.
+
 ```bash
 curl -X POST http://127.0.0.1:8000/api/reports/upload \
   -F "file=@report.pdf"
