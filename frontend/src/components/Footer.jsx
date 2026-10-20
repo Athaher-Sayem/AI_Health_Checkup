@@ -11,8 +11,8 @@ export default function Footer() {
         </div>
 
         <p className="footer-legal">
-          এই অ্যাপটি একটি শিক্ষামূলক টুল। এটি কোনো রোগ নির্ণয় বা চিকিৎসার বিকল্প নয়।
-          চিকিৎসা সংক্রান্ত সিদ্ধান্তের জন্য যোগ্য চিকিৎসকের পরামর্শ নিন।
+          Built for understanding, not diagnosis. Consult a qualified healthcare
+          professional before making medical decisions.
         </p>
       </div>
     </footer>

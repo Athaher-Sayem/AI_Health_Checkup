@@ -3,10 +3,10 @@ import { useRequest } from '../hooks/useRequest.js'
 import { analyzeReport } from '../services/api.js'
 
 const STEPS = [
-  'রিপোর্ট পড়া হচ্ছে',
-  'পরীক্ষাগুলো শনাক্ত করা হচ্ছে',
-  'ফলাফল যাচাই করা হচ্ছে',
-  'সহজ ভাষায় ব্যাখ্যা তৈরি হচ্ছে',
+  'Reading your report',
+  'Identifying test results',
+  'Verifying values and reference ranges',
+  'Preparing plain-English explanations',
 ]
 
 export default function ProcessingPage({ reportId, onDone, onFailed, onCancel }) {
@@ -44,18 +44,18 @@ export default function ProcessingPage({ reportId, onDone, onFailed, onCancel })
 
   if (error) {
     return (
-      <main className="shell">
+      <main className="shell processing-shell" id="main-content" tabIndex={-1}>
         <div className="empty-state" style={{ paddingTop: 'var(--space-16)' }}>
-          <h2>রিপোর্ট বিশ্লেষণ করা যায়নি</h2>
+          <h2>Unable to analyse your report</h2>
           <p className="error-text" style={{ marginTop: 'var(--space-3)' }}>
             {error.message}
           </p>
           <div className="btn-row" style={{ justifyContent: 'center' }}>
             <button type="button" className="btn btn--primary" onClick={onFailed}>
-              আবার চেষ্টা করুন
+              Try again
             </button>
             <button type="button" className="btn btn--secondary" onClick={onCancel}>
-              ফিরে যান
+              Go back
             </button>
           </div>
         </div>
@@ -64,9 +64,11 @@ export default function ProcessingPage({ reportId, onDone, onFailed, onCancel })
   }
 
   return (
-    <main className="shell">
+    <main className="shell processing-shell" id="main-content" tabIndex={-1}>
       <header className="hero" style={{ paddingBottom: 'var(--space-4)' }}>
-        <h1>রিপোর্ট বিশ্লেষণ করা হচ্ছে…</h1>
+        <span className="processing-symbol" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 12h4l3-7 4 14 3-7h4" /></svg></span>
+        <h1>Making sense of your report.</h1>
+        <p className="hero-tagline">Checking the facts before explaining them. This may take a moment.</p>
       </header>
 
       <div className="progress" role="status" aria-live="polite">
@@ -101,7 +103,7 @@ export default function ProcessingPage({ reportId, onDone, onFailed, onCancel })
 
       <div className="btn-row">
         <button type="button" className="btn btn--ghost" onClick={onCancel}>
-          বাতিল করুন
+          Go back
         </button>
       </div>
     </main>

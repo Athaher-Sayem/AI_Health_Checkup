@@ -78,16 +78,16 @@ export default function HomePage({ health, maxSizeMb, onUploaded }) {
   }
 
   async function handleFile(file) {
-    if (!file) return
+    if (!file || busy) return
     setError(null)
 
     const lower = file.name.toLowerCase()
     if (!filePattern.test(lower)) {
-      setError(`শুধুমাত্র ${acceptedTypes.map((type) => type.toUpperCase()).join(', ')} ফাইল দেওয়া যাবে।`)
+      setError(`Only ${acceptedTypes.map((type) => type.toUpperCase()).join(', ')} files are accepted.`)
       return
     }
     if (file.size > maxSizeMb * 1024 * 1024) {
-      setError(`ফাইলের আকার অনেক বড়। সর্বোচ্চ ${maxSizeMb} MB নেওয়া যাবে।`)
+      setError(`The file is too large. The maximum size is ${maxSizeMb} MB.`)
       return
     }
 
@@ -115,13 +115,21 @@ export default function HomePage({ health, maxSizeMb, onUploaded }) {
   }
 
   return (
-    <main className="shell">
-      <header className="hero">
-        <h1>{t('app_title')}</h1>
+    <main className="shell home-shell" id="main-content" tabIndex={-1}>
+      <div className="home-workspace">
+      <header className="hero home-intro">
+        <span className="intro-tag"><span aria-hidden="true" /> A clearer view of your health</span>
+        <h1>Your report, made clear.</h1>
         <p className="hero-tagline">{t('tagline')}</p>
+        <ol className="how-it-works" aria-label="How it works">
+          <li><span className="how-step" aria-hidden="true">1</span><div><h2>Upload your report</h2><p>A lab report PDF or a clear photo is all you need.</p></div></li>
+          <li><span className="how-step" aria-hidden="true">2</span><div><h2>See the verified results</h2><p>Values are checked against the ranges printed on your report.</p></div></li>
+          <li><span className="how-step" aria-hidden="true">3</span><div><h2>Understand what they mean</h2><p>Read plain-English explanations, then talk with your doctor.</p></div></li>
+        </ol>
       </header>
 
-      <section className="uploader">
+      <section className="uploader upload-panel" aria-labelledby="upload-heading">
+        <div className="upload-panel-heading"><span className="panel-doc" aria-hidden="true"><DocIcon /></span><div><h2 id="upload-heading">Start with your report</h2><p>No medical jargon. Just a clearer explanation.</p></div></div>
         <div
           className={`dropzone${dragging ? ' dropzone--active' : ''}`}
           onDragOver={(e) => {
@@ -136,6 +144,8 @@ export default function HomePage({ health, maxSizeMb, onUploaded }) {
           }}
           onClick={() => !busy && inputRef.current?.click()}
           role="button"
+          aria-label="Choose a report to analyse"
+          aria-describedby="upload-formats"
           tabIndex={0}
           aria-disabled={busy}
           onKeyDown={(e) => {
@@ -150,13 +160,15 @@ export default function HomePage({ health, maxSizeMb, onUploaded }) {
           </span>
           <p className="dropzone-title">{t('upload_title')}</p>
           <p className="dropzone-hint">{t('upload_hint')}</p>
-          <p className="dropzone-meta">
-            {acceptedTypes.map((type) => type.toUpperCase()).join(', ')} — সর্বোচ্চ{' '}
+          <span className="btn btn--primary browse-action" aria-hidden="true">Browse files</span>
+          <p className="dropzone-meta" id="upload-formats">
+            {acceptedTypes.map((type) => type.toUpperCase()).join(', ')} · Up to{' '}
             {maxSizeMb} MB
           </p>
           <input
             ref={inputRef}
             type="file"
+            aria-label="Report file"
             accept={accepted}
             hidden
             onChange={(e) => handleFile(e.target.files?.[0])}
@@ -188,7 +200,7 @@ export default function HomePage({ health, maxSizeMb, onUploaded }) {
               />
             </div>
             <div className="progress-meta">
-              <span>ফাইল আপলোড হচ্ছে…</span>
+              <span>Uploading your report…</span>
               <span className="progress-percent">{uploadPct}%</span>
             </div>
           </div>
@@ -203,16 +215,23 @@ export default function HomePage({ health, maxSizeMb, onUploaded }) {
         {busy ? (
           <div className="btn-row">
             <button type="button" className="btn btn--ghost" onClick={reset}>
-              বাতিল করুন
+              Reset upload
             </button>
           </div>
         ) : null}
+        <p className="upload-footnote"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3" /></svg>Stored temporarily. Delete your report when you’re done.</p>
+      </section>
+      </div>
+
+      <section className="report-guidance" aria-label="Before you upload">
+        <div><h2>Better input. Clearer results.</h2><p>Use the original PDF when possible. For photos, keep the whole page in focus with good lighting and no glare.</p></div>
+        <div><h2>Your report is the source.</h2><p>We use the reference ranges on your document. Missing or unclear information is marked as uncertain, never guessed.</p></div>
       </section>
 
       <Disclaimer
         aiNotice={
           health && health.ai_configured === false
-            ? 'AI ব্যাখ্যা চালু নেই। ফলাফলগুলো শুধু রিপোর্টের লেখা থেকে দেখানো হচ্ছে।'
+            ? 'AI explanations are not enabled. You can still view verified results read from your report.'
             : null
         }
       />

@@ -1,7 +1,7 @@
 # AI Medical Report Explainer
 
 Upload a medical test report as a **PDF or image** and read it explained in simple
-**Bangla**.
+**English**.
 
 The application extracts the facts printed on the report, decides whether each
 value falls inside the reference range **that same report printed**, and only then
@@ -46,7 +46,7 @@ Compare With the Report's Own Reference Ranges
       ↓
 AI Explains Verified Information
       ↓
-Simple Bangla Summary
+Simple English Summary
 ```
 
 **The language model never decides whether a number is high or low.** That is
@@ -98,14 +98,14 @@ number into a sentence a non-medical reader can understand.
 3. **Validate** — `validator.py` compares each value against the reference range
    printed on the report and assigns `low` / `normal` / `high` / `abnormal` /
    `unknown`.
-4. **Explain** — verified results are sent to Gemini, which returns Bangla prose
+4. **Explain** — verified results are sent to Gemini, which returns English prose
    in three parts: what the report shows, general information, and what cannot be
    determined.
 5. **Check** — the model's own `status` field is compared against the verified
    status. Disagreement triggers one regeneration; persistent disagreement
    discards the model's prose entirely.
-6. **Summarise** — counts come from the validated data, rendered as Bangla
-   numerals.
+6. **Summarise** — counts come from the validated data, rendered with English
+   digits.
 
 The AI stage is **additive**. With no API key, or if the call fails, or if the
 model contradicts the facts, the report still returns complete and correct
@@ -543,12 +543,31 @@ Liveness probe. Returns `ai_configured` as a boolean — never the key itself.
 ## Testing
 
 ```bash
-python -m pytest          # 89 tests
+python -m pytest          # backend regression suite
 python -m pytest -v       # verbose
 ```
 
 **The Gemini API is never called during tests.** The AI stage is mocked, so the
 suite runs offline and deterministically.
+
+The interface, summaries, notices, and AI explanation prompts use English only.
+Original uploaded report text and filenames are preserved rather than translated.
+The legacy API field `status_bn` now contains English display labels; its key is
+retained for compatibility.
+
+For browser checks, install Playwright (`python -m pip install playwright` and
+`python -m playwright install chromium`), start the frontend with `npm run dev`,
+then run this from the repository root:
+
+```bash
+python frontend/tests/smoke.py http://127.0.0.1:5173
+```
+
+This checks English-only content (including a previously saved Bangla preference),
+keyboard file selection, upload validation, text reading, processing, results,
+deletion, both themes, and layouts from 320px to 1440px. API responses are mocked;
+no report is sent to an AI service. Screenshots are saved under the system's
+temporary directory.
 
 ### Coverage against the required scenarios
 
@@ -605,7 +624,7 @@ AI_Health_Checkup/
 │   │   ├── validator.py            Deterministic status authority
 │   │   ├── medical_explainer.py    Prompt, parsing, contradiction check
 │   │   ├── gemini_client.py        Gemini API call
-│   │   ├── report_summary.py       Bangla summary with real counts
+│   │   ├── report_summary.py       English summary with real counts
 │   │   ├── pipeline.py             End-to-end orchestration
 │   │   └── report_store.py         In-memory TTL store
 │   ├── schemas/
@@ -617,7 +636,7 @@ AI_Health_Checkup/
 │       ├── components/             SummaryCard, TestCard, Disclaimer
 │       ├── pages/                  Home, Processing, Results
 │       └── services/api.js         Fetch wrapper
-├── tests/                          89 tests
+├── tests/                          Backend regression tests
 ├── .env.example
 ├── .gitignore
 ├── pytest.ini

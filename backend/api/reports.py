@@ -101,7 +101,7 @@ async def upload_report(file: UploadFile = File(...)) -> UploadResponse:
                     upload.cleanup()
                     raise HTTPException(
                         status_code=400,
-                        detail="এই PDF ফাইলটি পাসওয়ার্ড সুরক্ষিত। আনফলকড PDF দিন।",
+                        detail="This PDF is password-protected. Upload an unlocked PDF.",
                     )
         except HTTPException:
             raise
@@ -109,7 +109,7 @@ async def upload_report(file: UploadFile = File(...)) -> UploadResponse:
             upload.cleanup()
             raise HTTPException(
                 status_code=400,
-                detail="PDF ফাইলটি পড়া যায়নি। ফাইলটি ক্ষতিগ্রস্ত হতে পারে।",
+                detail="The PDF could not be read. The file may be damaged.",
             ) from None
     else:
         # An image whose bytes only look like an image is refused now, so the
@@ -168,14 +168,14 @@ async def read_text(file: UploadFile = File(...)) -> ReadTextResponse:
                     if document.needs_pass:
                         raise HTTPException(
                             status_code=400,
-                            detail="এই PDF ফাইলটি পাসওয়ার্ড সুরক্ষিত। আনফলকড PDF দিন।",
+                            detail="This PDF is password-protected. Upload an unlocked PDF.",
                         )
             except HTTPException:
                 raise
             except Exception:
                 raise HTTPException(
                     status_code=400,
-                    detail="PDF ফাইলটি পড়া যায়নি। ফাইলটি ক্ষতিগ্রস্ত হতে পারে।",
+                    detail="The PDF could not be read. The file may be damaged.",
                 ) from None
         else:
             try:
@@ -192,7 +192,7 @@ async def read_text(file: UploadFile = File(...)) -> ReadTextResponse:
         logger.exception("Reading text failed")
         raise HTTPException(
             status_code=422,
-            detail="ফাইলটির লেখা পড়া যায়নি। অন্য একটি ফাইল ব্যবহার করুন।",
+            detail="The file text could not be read. Try another file.",
         ) from None
     finally:
         # Privacy: the bytes are never kept after reading.
@@ -227,7 +227,7 @@ async def analyze_report(payload: AnalyzeRequest) -> AnalyzeResponse:
     """Process a previously uploaded report and return the full result."""
     record = store.get(payload.report_id)
     if record is None:
-        raise HTTPException(status_code=404, detail="রিপোর্টটি পাওয়া যায়নি।")
+        raise HTTPException(status_code=404, detail="Report not found.")
 
     upload = file_handler.TempUpload(
         report_id=payload.report_id,
@@ -240,7 +240,7 @@ async def analyze_report(payload: AnalyzeRequest) -> AnalyzeResponse:
     if not upload.path.exists():
         raise HTTPException(
             status_code=410,
-            detail="আপলোড করা ফাইলটি আর পাওয়া যাচ্ছে না। আবার আপলোড করুন।",
+            detail="The uploaded file is no longer available. Upload it again.",
         )
 
     try:
@@ -253,7 +253,7 @@ async def analyze_report(payload: AnalyzeRequest) -> AnalyzeResponse:
         logger.exception("Analysis failed for report %s", payload.report_id)
         raise HTTPException(
             status_code=422,
-            detail="রিপোর্টটি বিশ্লেষণ করা যায়নি। অন্য একটি ফাইল ব্যবহার করুন।",
+            detail="The report could not be analysed. Try another file.",
         ) from None
     finally:
         # Privacy: the bytes are never kept after analysis.
@@ -283,7 +283,7 @@ async def get_report(report_id: str) -> AnalyzeResponse:
     """Return a stored analysis result."""
     record = store.get(report_id)
     if record is None:
-        raise HTTPException(status_code=404, detail="রিপোর্টটি পাওয়া যায়নি।")
+        raise HTTPException(status_code=404, detail="Report not found.")
 
     return AnalyzeResponse(
         report_id=record.report_id,
@@ -337,7 +337,7 @@ async def _read_upload(file: UploadFile) -> bytes:
         total += len(chunk)
         if total > limit:
             raise file_handler.UploadError(
-                f"ফাইলের আকত অনেক বড়। সর্বোচ্চ {get_settings().max_upload_size_mb} MB নেওয়া যাবে।"
+                f"The file is too large. The maximum size is {get_settings().max_upload_size_mb} MB."
             )
         chunks.append(chunk)
 

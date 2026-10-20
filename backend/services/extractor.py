@@ -871,7 +871,7 @@ def extract_tests(pages: list[PageText]) -> ExtractionOutput:
 
     if not output.results:
         output.warnings.append(
-            "রিপোর্ট থেকে পরীক্ষার ফলাফল চেনা যায়নি। ফাইলটির মান বেশি হলে স্পষ্ট ছবি ব্যবহার করুন।"
+            "No test results could be identified in the report. Try a clearer image or the original PDF."
         )
 
     return output

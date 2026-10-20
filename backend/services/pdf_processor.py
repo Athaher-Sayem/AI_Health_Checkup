@@ -123,12 +123,12 @@ def extract_pdf(path: str, ocr_scanned_pages: bool = True) -> PdfResult:
     try:
         document = fitz.open(path)
     except Exception as exc:  # pragma: no cover - depends on libmupdf internals
-        raise PdfProcessingError("PDF ফাইলটি খোলা যায়নি। ফাইলটি ক্ষতিগ্রস্ত হতে পারে।") from exc
+        raise PdfProcessingError("The PDF could not be opened. The file may be damaged.") from exc
 
     if document.needs_pass:
         document.close()
         raise PdfProcessingError(
-            "এই PDF ফাইলটি পাসওয়ার্ড সুরক্ষিত। আনফলকড PDF দিন।"
+            "This PDF is password-protected. Upload an unlocked PDF."
         )
 
     result = PdfResult(page_count=document.page_count)
@@ -179,7 +179,7 @@ def extract_pdf(path: str, ocr_scanned_pages: bool = True) -> PdfResult:
                 ocr_text, confidence = reading.text, reading.confidence
             except ocr.OcrUnavailableError as exc:
                 result.warnings.append(
-                    f"পৃষ্ঠা {page_number}: OCR চালু নেই ({exc})।"
+                    f"Page {page_number}: OCR is unavailable ({exc})."
                 )
                 result.raw_pages.append(cleaned)
                 result.pages.append(
@@ -191,7 +191,7 @@ def extract_pdf(path: str, ocr_scanned_pages: bool = True) -> PdfResult:
                 reading.text_height_px is not None or reading.word_confidence is not None
             ) and not reading.is_legible:
                 result.warnings.append(
-                    f"পৃষ্ঠা {page_number}: {ocr.LOW_RESOLUTION_WARNING}"
+                    f"Page {page_number}: {ocr.LOW_RESOLUTION_WARNING}"
                 )
                 # The page was too small to read: do not report what could
                 # not be read.
@@ -200,7 +200,7 @@ def extract_pdf(path: str, ocr_scanned_pages: bool = True) -> PdfResult:
             combined = "\n".join(part for part in (cleaned, ocr_text) if part.strip())
             if not combined.strip():
                 result.warnings.append(
-                    f"পৃষ্ঠা {page_number} থেকে কোনো পাঠযোগ্য লেখা পাওয়া যায়নি।"
+                    f"No readable text was found on page {page_number}."
                 )
 
             result.raw_pages.append(cleaned)
@@ -220,7 +220,7 @@ def extract_pdf(path: str, ocr_scanned_pages: bool = True) -> PdfResult:
         document.close()
 
     if not result.pages:
-        raise PdfProcessingError("PDF ফাইলে কোনো পৃষ্ঠা পাওয়া যায়নি।")
+        raise PdfProcessingError("No pages were found in the PDF.")
 
     if result.kind == DocumentKind.PDF_TEXT and result.ocr_used:
         result.kind = DocumentKind.PDF_SCANNED

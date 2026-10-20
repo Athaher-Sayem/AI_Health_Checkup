@@ -195,7 +195,7 @@ def test_detect_extension_names_the_real_reason_for_a_renamed_file():
     with pytest.raises(file_handler.UploadError) as error:
         file_handler.detect_extension("fake.webp", build_image_bytes("PNG")[:16])
 
-    assert "আসল ধরন" in str(error.value)
+    assert "actual file type" in str(error.value)
 
 
 def test_detect_extension_rejects_a_riff_container_that_is_not_webp():
@@ -204,7 +204,7 @@ def test_detect_extension_rejects_a_riff_container_that_is_not_webp():
     with pytest.raises(file_handler.UploadError) as error:
         file_handler.detect_extension("sound.webp", b"RIFF\x24\x00\x00\x00WAVEfmt ")
 
-    assert "পড়া যায়নি" in str(error.value)
+    assert "could not be read" in str(error.value)
 
 
 def test_the_image_pipeline_can_decode_a_webp():
@@ -261,7 +261,7 @@ def test_an_oversized_image_is_refused_before_it_is_decoded(
     with pytest.raises(file_handler.UploadError) as error:
         file_handler.verify_image(path)
 
-    assert "সাইজ" in str(error.value)
+    assert "size" in str(error.value)
     path.unlink(missing_ok=True)
 
 
@@ -270,4 +270,3 @@ def test_the_pixel_limit_still_accepts_a_phone_photograph():
     from backend.utils import file_handler
 
     assert file_handler.MAX_IMAGE_PIXELS >= 48_000_000
-

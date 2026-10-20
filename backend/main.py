@@ -22,7 +22,7 @@ app = FastAPI(
     description=(
         "Uploads a medical test report, extracts the printed facts, validates "
         "them against the reference ranges printed on the report, and explains "
-        "them in simple Bangla. It never diagnoses."
+        "them in plain English. It never diagnoses."
     ),
 )
 

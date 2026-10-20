@@ -4,7 +4,7 @@ import SummaryCard from '../components/SummaryCard.jsx'
 import TestCard from '../components/TestCard.jsx'
 import { useLocale } from '../context/LocaleContext.jsx'
 import { useRequest } from '../hooks/useRequest.js'
-import { toBanglaNumber } from '../utils/numbers.js'
+import { formatNumber } from '../utils/numbers.js'
 import { deleteReport, getReport } from '../services/api.js'
 
 const PrintIcon = () => (
@@ -63,9 +63,9 @@ export default function ResultsPage({ reportId, onReset }) {
 
   if (error) {
     return (
-      <main className="shell">
+      <main className="shell" id="main-content" tabIndex={-1}>
         <div className="empty-state" style={{ paddingTop: 'var(--space-16)' }}>
-          <h2>ফলাফল দেখানো যায়নি</h2>
+          <h2>Unable to load results</h2>
           <p className="error-text" style={{ marginTop: 'var(--space-3)' }}>
             {error.message}
           </p>
@@ -81,11 +81,11 @@ export default function ResultsPage({ reportId, onReset }) {
 
   if (deleted) {
     return (
-      <main className="shell">
+      <main className="shell" id="main-content" tabIndex={-1}>
         <div className="empty-state" style={{ paddingTop: 'var(--space-16)' }}>
-          <h2>রিপোর্ট মুছে ফেলা হয়েছে</h2>
+          <h2>Report deleted</h2>
           <p className="muted" style={{ marginTop: 'var(--space-3)' }}>
-            আপলোড করা ফাইল ও ফলাফল সার্ভার থেকে মুছে ফেলা হয়েছে।
+            Your uploaded file and results have been removed from the server.
           </p>
           <div className="btn-row" style={{ justifyContent: 'center' }}>
             <button type="button" className="btn btn--primary" onClick={onReset}>
@@ -99,7 +99,7 @@ export default function ResultsPage({ reportId, onReset }) {
 
   if (!data) {
     return (
-      <main className="shell">
+      <main className="shell" id="main-content" tabIndex={-1}>
         <div className="progress" style={{ marginTop: 'var(--space-12)' }}>
           <div className="progress-track">
             <div className="progress-fill progress-fill--indeterminate" />
@@ -119,24 +119,24 @@ export default function ResultsPage({ reportId, onReset }) {
   const total = Math.max(counts.total ?? 0, 1)
   const outside = (counts.low ?? 0) + (counts.high ?? 0) + (counts.abnormal ?? 0)
   const segments = [
-    { key: 'normal', label: 'স্বাভাবিক', value: counts.normal ?? 0 },
-    { key: 'outside', label: 'সীমার বাইরে', value: outside },
-    { key: 'unknown', label: 'নির্ধারণ করা যায়নি', value: counts.unknown ?? 0 },
+    { key: 'normal', label: 'Normal', value: counts.normal ?? 0 },
+    { key: 'outside', label: 'Outside range', value: outside },
+    { key: 'unknown', label: 'Unable to determine', value: counts.unknown ?? 0 },
   ]
 
   return (
-    <main className="shell">
+    <main className="shell" id="main-content" tabIndex={-1}>
       <header className="hero" style={{ paddingBottom: 'var(--space-4)' }}>
         <h1>{t('results_title')}</h1>
         <p className="hero-tagline" style={{ fontSize: 'var(--fs-14)' }}>
-          ফাইল: {data.filename} ·{' '}
-          {data.meta?.ocr_used ? 'OCR দিয়ে পড়া হয়েছে' : 'টেক্সট থেকে পড়া হয়েছে'} ·{' '}
-          {data.meta?.page_count} পৃষ্ঠা
+          {data.filename} ·{' '}
+          {data.meta?.ocr_used ? 'Read using OCR' : 'Read from text'} ·{' '}
+          {data.meta?.page_count} page(s)
         </p>
       </header>
 
-      <section className="verdict" aria-label="ফলাফলের সারসংক্ষেপ">
-        <div className="verdict-strip" role="img" aria-label="ফলাফলের বিভাজন">
+      <section className="verdict" aria-label="Results overview">
+        <div className="verdict-strip" role="img" aria-label={segments.map((seg) => `${seg.label}: ${seg.value}`).join(', ')}>
           {segments.map((seg) =>
             seg.value > 0 ? (
               <span
@@ -156,7 +156,7 @@ export default function ResultsPage({ reportId, onReset }) {
                 aria-hidden="true"
               />
               {seg.label}
-              <span className="verdict-count">{toBanglaNumber(seg.value)}</span>
+              <span className="verdict-count">{formatNumber(seg.value)}</span>
             </span>
           ))}
         </div>
@@ -166,8 +166,8 @@ export default function ResultsPage({ reportId, onReset }) {
 
       {data.ai_error ? (
         <p className="notice">
-          AI ব্যাখ্যা যোগ করা যায়নি ({data.ai_error})। নিচের ফলাফলগুলো রিপোর্টের লেখা
-          থেকে সরাসরি দেখানো হয়েছে।
+          AI explanations are unavailable ({data.ai_error}). The results below
+          are shown directly from your report.
         </p>
       ) : null}
 
@@ -189,7 +189,9 @@ export default function ResultsPage({ reportId, onReset }) {
 
       {data.validation?.contradictions?.length ? (
         <p className="notice">
-          AI ব্যাখ্যায় অসামঞ্জস্য পাওয়া গিয়েছিল, তাই সঠিক তথ্য দিয়ে আবার তৈরি করা হয়েছে।
+          {data.validation.repaired && data.explanations?.length
+            ? 'An inconsistent AI explanation was regenerated using the verified facts.'
+            : 'Inconsistent AI explanations were omitted. The verified results below are unchanged.'}
         </p>
       ) : null}
 
@@ -198,7 +200,7 @@ export default function ResultsPage({ reportId, onReset }) {
           <section key={groupName} className="group">
             <h2 className="group-title">
               {groupName}
-              <span className="group-count">{toBanglaNumber(items.length)}</span>
+              <span className="group-count">{formatNumber(items.length)}</span>
             </h2>
             {items.map((item, index) => (
               <TestCard
@@ -213,10 +215,10 @@ export default function ResultsPage({ reportId, onReset }) {
 
       {!data.results?.length ? (
         <div className="empty-state">
-          <h2>কোনো ফলাফল পাওয়া যায়নি</h2>
+          <h2>No test results found</h2>
           <p className="muted" style={{ marginTop: 'var(--space-2)' }}>
-            রিপোর্টে পরীক্ষার ফলাফল চেনা যায়নি। ফাইলটির মান বেশি হলে OCR সাহায্যে দরকার
-            হতে পারে।
+            We could not identify test results in this report. Try the original
+            PDF or a clearer, well-lit image of the full page.
           </p>
         </div>
       ) : null}
@@ -233,7 +235,7 @@ export default function ResultsPage({ reportId, onReset }) {
         </button>
         <button type="button" className="btn btn--secondary" onClick={handleCopy}>
           <CopyIcon />
-          {copied ? 'কপি হয়েছে ✓' : t('copy_summary')}
+          {copied ? 'Copied ✓' : t('copy_summary')}
         </button>
         <button type="button" className="btn btn--danger" onClick={handleDelete}>
           <TrashIcon />

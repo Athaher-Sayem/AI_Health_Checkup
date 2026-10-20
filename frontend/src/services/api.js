@@ -12,9 +12,9 @@ async function parse(response) {
     const detail =
       payload?.detail ??
       payload?.message ??
-      'অনুরোধটি সম্পন্ন হয়নি। আবার চেষ্টা করুন।'
+      'The request could not be completed. Please try again.'
     const message =
-      typeof detail === 'string' ? detail : 'অনুরোধটি সম্পন্ন হয়নি। আবার চেষ্টা করুন।'
+      typeof detail === 'string' ? detail : 'The request could not be completed. Please try again.'
     const error = new Error(message)
     error.status = response.status
     error.payload = payload
@@ -40,7 +40,7 @@ export function getHealth() {
   return withTimeout(
     fetch(`${API_BASE}/api/health`, { signal: new AbortController().signal }).then(parse),
     15000,
-    'সার্ভারের সাথে সংযোগ করা যায়নি।',
+    'Could not connect to the server.',
   )
 }
 
@@ -71,7 +71,7 @@ export function uploadReport(file, onProgress) {
         // instead of blaming the report the user just picked.
         reject(
           new Error(
-            'সার্ভারটি সাড়া দিচ্ছে না। সার্ভার চালু আছে কি না দেখুন, তারপর আবার চেষ্টা করুন।',
+            'The server is not responding. Check that it is running, then try again.',
           ),
         )
         return
@@ -79,14 +79,14 @@ export function uploadReport(file, onProgress) {
       const detail =
         payload?.detail ??
         payload?.message ??
-        'ফাইলটি আপলোড করা যায়নি। আবার চেষ্টা করুন।'
-      reject(new Error(typeof detail === 'string' ? detail : 'ফাইলটি আপলোড করা যায়নি।'))
+        'The file could not be uploaded. Please try again.'
+      reject(new Error(typeof detail === 'string' ? detail : 'The file could not be uploaded.'))
     })
 
     xhr.addEventListener('error', () =>
-      reject(new Error('সার্ভারের সাথে সংযোগ করা যায়নি। সার্ভার চালু আছে কি না দেখুন।')),
+      reject(new Error('Could not connect to the server. Check that it is running.')),
     )
-    xhr.addEventListener('abort', () => reject(new Error('আপলোড বাতিল করা হয়েছে।')))
+    xhr.addEventListener('abort', () => reject(new Error('Upload cancelled.')))
 
     xhr.send(form)
   })
@@ -100,7 +100,7 @@ export function analyzeReport(reportId) {
       body: JSON.stringify({ report_id: reportId }),
     }).then(parse),
     180000,
-    'বিশ্লেষণে অনেক সময় লেগেছে। আবার চেষ্টা করুন।',
+    'Analysis timed out. Please try again.',
   )
 }
 
@@ -108,7 +108,7 @@ export function getReport(reportId) {
   return withTimeout(
     fetch(`${API_BASE}/api/reports/${reportId}`).then(parse),
     20000,
-    'ফলাফল আনা যায়নি।',
+    'Results could not be loaded.',
   )
 }
 
@@ -116,7 +116,7 @@ export function deleteReport(reportId) {
   return withTimeout(
     fetch(`${API_BASE}/api/reports/${reportId}`, { method: 'DELETE' }).then(parse),
     15000,
-    'রিপোর্ট মুছে ফেলা যায়নি।',
+    'The report could not be deleted.',
   )
 }
 
@@ -133,6 +133,6 @@ export function readReportText(file) {
   return withTimeout(
     fetch(`${API_BASE}/api/reports/read-text`, { method: 'POST', body: form }).then(parse),
     180000,
-    'লেখা পড়া যায়নি।',
+    'The report text could not be read.',
   )
 }

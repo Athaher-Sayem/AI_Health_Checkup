@@ -38,9 +38,9 @@ logger = logging.getLogger(__name__)
 MAX_REGENERATIONS = 1
 
 _REGENERATION_HINT = (
-    "\n\nসতর্কতা: আগের উত্তরে অবস্থা সঠিক বলা হয়নি। "
-    "নিচে দেওয়া 'status' মানগুলো ইতিমধ্যে যাচাই করা এবং সেগুলো হুবহু "
-    "লিখতে হবে। কোনো সংখ্যা বা সীমা বদলাবেন না।"
+    "\n\nWarning: the previous response stated an incorrect status. "
+    "The supplied 'status' values are already verified and must be copied exactly. "
+    "Do not change any numbers or ranges. Write explanations in English only."
 )
 
 
@@ -59,7 +59,7 @@ def _read_document(upload: TempUpload) -> tuple[list[PageText], DocumentKind, li
         reading = ocr.read_image(data)
         text, confidence = reading.text, reading.confidence
     except ocr.OcrUnavailableError as exc:
-        warnings.append(f"ছবির লেখা পড়া যায়নি ({exc})।")
+        warnings.append(f"The image text could not be read ({exc}).")
         text, confidence = "", None
     else:
         if (
@@ -71,7 +71,7 @@ def _read_document(upload: TempUpload) -> tuple[list[PageText], DocumentKind, li
             text, confidence = "", None
 
     if not text.strip():
-        warnings.append("ছবিতে কোনো লেখা পড়া যায়নি।")
+        warnings.append("No text could be read from the image.")
 
     page = PageText(page=1, text=text, ocr_used=True, ocr_confidence=confidence)
     return [page], kind, warnings
@@ -91,7 +91,7 @@ def _explain(results, meta: ExtractionMeta):
             [],
             medical_explainer.empty_validation(results, checked=False),
             False,
-            "AI ব্যাখ্যার জন্য API key সেট করা নেই।",
+            "No API key is configured for AI explanations.",
             None,
         )
 
@@ -151,8 +151,7 @@ def _partial_notice(blocks) -> str | None:
     missing = sum(1 for block in blocks if not block.simple_explanation)
     if not missing:
         return None
-    count = str(missing).translate(str.maketrans("0123456789", "০১২৩৪৫৬৭৮৯"))
-    return f"AI ব্যাখ্যাটি অসম্পূর্ণ: {count}টি পরীক্ষার ব্যাখ্যা পাওয়া যায়নি।"
+    return f"The AI explanation is incomplete: explanations for {missing} test(s) are missing."
 
 
 def analyze_upload(upload: TempUpload) -> ReportRecord:
@@ -168,12 +167,12 @@ def analyze_upload(upload: TempUpload) -> ReportRecord:
     groups = validator.group_results(results)
     if any(page.ocr_used for page in pages):
         warnings.append(
-            "ছবি থেকে স্বয়ংক্রিয়ভাবে পড়া মান, একক ও সীমা মূল রিপোর্টের সঙ্গে মিলিয়ে দেখুন। "
-            "সব সারি সম্পূর্ণ পড়া গেছে কি না নিশ্চিত করা যায়নি।"
+            "Check the automatically read values, units, and ranges against the original report. "
+            "We cannot confirm that every row was read completely."
         )
         if counts.unknown:
             warnings.append(
-                "কিছু ফলাফলের মান, একক বা সীমা অনিশ্চিত। এগুলোর অবস্থা অনুমান করা হয়নি।"
+                "Some values, units, or ranges are uncertain. Their status has not been guessed."
             )
 
     meta = ExtractionMeta(

@@ -46,7 +46,7 @@ export default function TextReadPage() {
   }
 
   async function handleFile(chosen) {
-    if (!chosen) return
+    if (!chosen || busy) return
     setError(null)
     setResult(null)
     setFile(chosen)
@@ -62,7 +62,7 @@ export default function TextReadPage() {
   }
 
   return (
-    <main className="shell">
+    <main className="shell" id="main-content" tabIndex={-1}>
       <header className="hero">
         <h1>{t('read_text_title')}</h1>
         <p className="hero-tagline">{t('read_text_tagline')}</p>
@@ -78,6 +78,7 @@ export default function TextReadPage() {
           }}
           onClick={() => !busy && inputRef.current?.click()}
           role="button"
+          aria-label="Choose a report to read its text"
           tabIndex={0}
           aria-disabled={busy}
           onKeyDown={(e) => {
@@ -95,6 +96,7 @@ export default function TextReadPage() {
           <input
             ref={inputRef}
             type="file"
+            aria-label="Report file"
             accept={DEFAULT_TYPES.map((type) => `.${type}`).join(',')}
             hidden
             onChange={(e) => handleFile(e.target.files?.[0])}

@@ -30,26 +30,26 @@ class ResultStatus(str, Enum):
     UNKNOWN = "unknown"  # not enough information - never guessed
 
 
-#: Bangla labels for each deterministic status.
+#: English display labels. Legacy constant/field names are kept for API compatibility.
 STATUS_BN: dict[ResultStatus, str] = {
-    ResultStatus.LOW: "কম",
-    ResultStatus.NORMAL: "স্বাভাবিক",
-    ResultStatus.HIGH: "বেশি",
-    ResultStatus.ABNORMAL: "স্বাভাবিক সীমার বাইরে",
-    ResultStatus.UNKNOWN: "নির্ধারণ করা যায়নি",
+    ResultStatus.LOW: "Low",
+    ResultStatus.NORMAL: "Normal",
+    ResultStatus.HIGH: "High",
+    ResultStatus.ABNORMAL: "Outside range",
+    ResultStatus.UNKNOWN: "Unable to determine",
 }
 
-#: Bangla headings for the three result groups shown in the UI.
-GROUP_NORMAL_BN = "স্বাভাবিক"
-GROUP_OUTSIDE_BN = "সীমার বাইরে"
-GROUP_UNKNOWN_BN = "নির্ধারণ করা যায়নি"
+#: English headings for the three result groups shown in the UI.
+GROUP_NORMAL_BN = "Normal"
+GROUP_OUTSIDE_BN = "Outside range"
+GROUP_UNKNOWN_BN = "Unable to determine"
 
 OUTSIDE_GROUP_STATUSES = (ResultStatus.LOW, ResultStatus.HIGH, ResultStatus.ABNORMAL)
 
 DISCLAIMER_BN = (
-    "এই অ্যাপটি শুধুমাত্র মেডিকেল রিপোর্টের তথ্য সহজ ভাষায় বোঝাতে সাহায্য করে। "
-    "এটি কোনো রোগ নির্ণয় বা চিকিৎসার বিকল্প নয়। "
-    "চিকিৎসা সংক্রান্ত সিদ্ধান্তের জন্য যোগ্য চিকিৎসকের পরামর্শ নিন।"
+    "This app helps explain medical report information in plain English. "
+    "It does not diagnose conditions or replace medical care. "
+    "Consult a qualified healthcare professional before making medical decisions."
 )
 
 
@@ -142,7 +142,7 @@ class ValidationReport(BaseModel):
 
 
 class ExplanationBlock(BaseModel):
-    """Bangla explanation for a single test, plus AI caveats."""
+    """English explanation for a single test, plus AI caveats."""
 
     test_name: str
     value_text: str | None = None
@@ -157,7 +157,7 @@ class ExplanationBlock(BaseModel):
 
 
 class ReportSummary(BaseModel):
-    """Overall Bangla summary. Counts come from `Counts`, not the model."""
+    """Overall English summary. Counts come from `Counts`, not the model."""
 
     headline: str
     bullets: list[str] = Field(default_factory=list)

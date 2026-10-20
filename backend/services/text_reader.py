@@ -79,7 +79,7 @@ def _read_image(path: Path, filename: str) -> TextReading:
     if illegible:
         warnings.append(ocr.LOW_RESOLUTION_WARNING)
     if not text.strip():
-        warnings.append("ছবিতে কোনো লেখা পড়া যায়নি।")
+        warnings.append("No text could be read from the image.")
 
     result = TextReading(
         filename=filename,

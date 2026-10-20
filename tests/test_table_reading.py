@@ -74,9 +74,9 @@ def test_incomplete_summary_never_implies_an_all_clear(text):
     results = read(text)
     summary = report_summary.build_summary(results, validator.count_results(results))
     joined = " ".join(summary.bullets)
-    assert "বাইরে কোনো ফলাফল পাওয়া যায়নি" not in joined
-    assert "অন্যান্য ফলাফল স্বাভাবিক" not in joined
-    assert "সম্পূর্ণ" in joined
+    assert "All results are normal" not in joined
+    assert "Other results are normal" not in joined
+    assert "cannot confirm that the complete report was read" in joined
 
 
 def synthetic_ocr_data():
@@ -262,7 +262,7 @@ def test_ocr_noise_does_not_create_a_result_for_the_whole_report(line):
     assert counts.total == 0
     summary = report_summary.build_summary(results, counts)
     joined = " ".join(summary.bullets)
-    assert "স্বাভাবিক সীমার মধ্যে" not in joined
+    assert "within the report's reference ranges" not in joined
 
 
 def test_a_row_with_a_recognised_unit_is_kept_even_without_a_value():

@@ -15,15 +15,15 @@ const MoonIcon = () => (
 
 export default function ThemeToggle() {
   const { theme, toggle } = useTheme()
-  const next = theme === 'dark' ? 'লাইট' : 'ডার্ক'
+  const next = theme === 'dark' ? 'light' : 'dark'
 
   return (
     <button
       type="button"
       className="icon-btn"
       onClick={toggle}
-      aria-label={`${next} মোড`}
-      title={`${next} মোড`}
+      aria-label={`Switch to ${next} mode`}
+      title={`Switch to ${next} mode`}
     >
       {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
       <span aria-hidden="true">{theme === 'dark' ? 'Light' : 'Dark'}</span>

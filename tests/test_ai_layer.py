@@ -110,7 +110,7 @@ class TestAIDoesNotOverride:
         blocks = medical_explainer.build_explanation_blocks(results, parsed)
 
         assert blocks[0].status is ResultStatus.LOW
-        assert blocks[0].status_bn == "কম"
+        assert blocks[0].status_bn == "Low"
 
     def test_page_number_is_never_taken_from_the_model(self):
         """A model claiming page 99 must not change the tracked page."""
@@ -174,7 +174,7 @@ class TestPromptSafetyRules:
     def test_prompt_states_status_is_verified(self):
         results = verified_results("Hemoglobin   10.2   g/dL   12 - 16\n")
         prompt = medical_explainer.build_user_prompt(results)
-        assert "যাচাই করা" in prompt
+        assert "verified" in prompt
 
 
 class TestResponseParsing:
@@ -249,8 +249,8 @@ class TestPipelineWithoutAI:
 
         assert ai_error is None
         assert ai_notice is not None
-        assert "অসম্পূর্ণ" in ai_notice
-        assert "১টি" in ai_notice
+        assert "incomplete" in ai_notice
+        assert "1 test" in ai_notice
         get_settings.cache_clear()
 
     def test_contradiction_drops_model_prose(self, monkeypatch):

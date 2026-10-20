@@ -166,7 +166,7 @@ def count_results(results: list[TestResult]) -> Counts:
 def group_results(results: list[TestResult]) -> dict[str, list[TestResult]]:
     """Split results into the three user-facing groups.
 
-    Keys are the Bangla headings the frontend renders.
+    Keys are the English headings the frontend renders.
     """
     groups: dict[str, list[TestResult]] = {
         GROUP_NORMAL_BN: [],

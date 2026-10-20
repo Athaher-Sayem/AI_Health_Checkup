@@ -114,14 +114,14 @@ def verify_image(path: Path) -> None:
         with Image.open(path) as image:
             if image.width * image.height > MAX_IMAGE_PIXELS:
                 raise UploadError(
-                    "ছবির সাইজ অনেক বড়। ছোট করে আবার আপলোড করুন।"
+                    "The image size is too large. Resize it and upload again."
                 )
             image.load()
     except UploadError:
         raise
     except Exception as exc:
         raise UploadError(
-            "ছবিটি পড়া যায়নি। ফাইলটি ক্ষতিগ্রস্ত হতে পারে।"
+            "The image could not be read. The file may be damaged."
         ) from exc
 
 
@@ -144,13 +144,13 @@ def detect_extension(filename: str, head: bytes) -> str:
     ext = _raw_extension(filename)
     if ext not in SUPPORTED_EXTENSIONS:
         raise UploadError(
-            "অসমর্থিত ফাইল টাইপ। শুধুমাত্র PDF, JPG, JPEG, PNG বা WEBP ফাইল দেওয়া যাবে।"
+            "Unsupported file type. Only PDF, JPG, JPEG, PNG, or WEBP files are accepted."
         )
 
     if _is_webp(head):
         if ext != ".webp":
             raise UploadError(
-                "ফাইলের নাম এবং ফাইলের আসল ধরন মিলছে না। সঠিক ফাইল আবার দেখুন।"
+                "The filename does not match the actual file type. Check the file and try again."
             )
         return ext
 
@@ -163,21 +163,21 @@ def detect_extension(filename: str, head: bytes) -> str:
             return ext
         if real_ext != ext:
             raise UploadError(
-                "ফাইলের নাম এবং ফাইলের আসল ধরন মিলছে না। সঠিক ফাইল আবার দেখুন।"
+                "The filename does not match the actual file type. Check the file and try again."
             )
         return ext
 
     # No magic byte matched: an unreadable or deliberately disguised file.
-    raise UploadError("ফাইলটি পড়া যায়নি বা ক্ষতিগ্রস্ত। অন্য একটি ফাইল ব্যবহার করুন।")
+    raise UploadError("The file could not be read or is damaged. Try another file.")
 
 
 def validate_upload_size(size_bytes: int) -> None:
     limit = get_settings().max_upload_size_bytes
     if size_bytes <= 0:
-        raise UploadError("ফাইলটি খালি।")
+        raise UploadError("The file is empty.")
     if size_bytes > limit:
         limit_mb = get_settings().max_upload_size_mb
-        raise UploadError(f"ফাইলের আকত অনেক বড়। সর্বোচ্চ {limit_mb} MB নেওয়া যাবে।")
+        raise UploadError(f"The file is too large. The maximum size is {limit_mb} MB.")
 
 
 @dataclass(slots=True)
@@ -264,7 +264,7 @@ def temp_path_for(report_id: str) -> Path:
     "file no longer available" branch instead of reading a different file.
     """
     if not report_id.isalnum():
-        raise UploadError("অবৈধ রিপোর্ট আইডি।")
+        raise UploadError("Invalid report ID.")
 
     root = _temp_root()
     for extension in sorted(SUPPORTED_EXTENSIONS):

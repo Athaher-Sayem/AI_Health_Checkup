@@ -20,7 +20,7 @@ from backend.services.medical_explainer import SYSTEM_INSTRUCTION
 logger = logging.getLogger(__name__)
 
 #: Token budget for one reply. A real CBC report has ~19 result rows and each
-#: row needs three short Bangla paragraphs, so the old hardcoded 2048 cut the
+#: row needs three short paragraphs, so the old hardcoded 2048 cut the
 #: answer off in the middle of an object and failed the whole AI stage.
 #: Overridable with the ``AI_MAX_TOKENS`` environment variable.
 MAX_TOKENS = DEFAULT_AI_MAX_TOKENS
@@ -116,32 +116,32 @@ def _call_openai_compatible(settings, prompt: str) -> str:
         logger.warning("AI HTTP error: %s", exc.code)
         if exc.code == 402:
             raise GeminiError(
-                "AI সেবার ক্রেডিট শেষ। ফলাফলগুলো রিপোর্টের লেখা থেকে দেখানো হয়েছে।"
+                "AI service credits have run out. Results are shown directly from the report."
             ) from exc
         raise GeminiError(
-            "AI সেবায় সমস্যা হয়েছে। ফলাফলগুলো রিপোর্টের লেখা থেকে দেখানো হয়েছে।"
+            "The AI service encountered a problem. Results are shown directly from the report."
         ) from exc
     except urllib.error.URLError as exc:
         logger.warning("AI network error: %s", exc.reason)
         raise GeminiError(
-            "AI সেবায় পৌঁছানো যায়নি। ফলাফলগুলো রিপোর্টের লেখা থেকে দেখানো হয়েছে।"
+            "The AI service could not be reached. Results are shown directly from the report."
         ) from exc
     except TimeoutError as exc:
         logger.warning("AI request timed out")
-        raise GeminiError("AI উত্তর দিতে সময় লেগেছে।") from exc
+        raise GeminiError("The AI response timed out.") from exc
     except json.JSONDecodeError as exc:
         logger.warning("AI returned non-JSON body")
-        raise GeminiError("AI উত্তরের বিন্যাস বোঝা যায়নি।") from exc
+        raise GeminiError("The AI response format could not be read.") from exc
 
     choices = data.get("choices") or []
     if not choices:
-        raise GeminiError("AI থেকে কোনো উত্তর পাওয়া যায়নি।")
+        raise GeminiError("No response was received from the AI service.")
     msg = choices[0].get("message", {}) or {}
     text = msg.get("content", "")
     if not text or not str(text).strip():
         text = msg.get("reasoning_content", "")
     if not text or not str(text).strip():
-        raise GeminiError("AI থেকে খালি উত্তর এসেছে।")
+        raise GeminiError("The AI returned an empty response.")
     return str(text)
 
 
@@ -159,7 +159,7 @@ def call_gemini(prompt: str) -> str:
         return _call_openai_compatible(settings, prompt)
 
     if not settings.has_gemini_key:
-        raise GeminiError("AI ব্যাখ্যার জন্য API key সেট করা নেই।")
+        raise GeminiError("No API key is configured for AI explanations.")
 
     url = _ENDPOINT.format(model=settings.gemini_model)
     body = json.dumps(
@@ -190,22 +190,22 @@ def call_gemini(prompt: str) -> str:
         logger.warning("Gemini HTTP error: %s", exc.code)
         if exc.code == 402:
             raise GeminiError(
-                "AI সেবার ক্রেডিট শেষ। ফলাফলগুলো রিপোর্টের লেখা থেকে দেখানো হয়েছে।"
+                "AI service credits have run out. Results are shown directly from the report."
             ) from exc
         raise GeminiError(
-            "AI সেবায় সমস্যা হয়েছে। ফলাফলগুলো রিপোর্টের লেখা থেকে দেখানো হয়েছে।"
+            "The AI service encountered a problem. Results are shown directly from the report."
         ) from exc
     except urllib.error.URLError as exc:
         logger.warning("Gemini network error: %s", exc.reason)
         raise GeminiError(
-            "AI সেবায় পৌঁছানো যায়নি। ফলাফলগুলো রিপোর্টের লেখা থেকে দেখানো হয়েছে।"
+            "The AI service could not be reached. Results are shown directly from the report."
         ) from exc
     except TimeoutError as exc:
         logger.warning("Gemini request timed out")
-        raise GeminiError("AI উত্তর দিতে সময় লেগেছে।") from exc
+        raise GeminiError("The AI response timed out.") from exc
     except json.JSONDecodeError as exc:
         logger.warning("Gemini returned non-JSON body")
-        raise GeminiError("AI উত্তরের বিন্যাস বোঝা যায়নি।") from exc
+        raise GeminiError("The AI response format could not be read.") from exc
 
     return _extract_text(data)
 
@@ -214,10 +214,10 @@ def _extract_text(data: dict) -> str:
     """Pull the text out of a generateContent response."""
     candidates = data.get("candidates") or []
     if not candidates:
-        raise GeminiError("AI থেকে কোনো উত্তর পাওয়া যায়নি।")
+        raise GeminiError("No response was received from the AI service.")
 
     parts = candidates[0].get("content", {}).get("parts", [])
     text = "".join(part.get("text", "") for part in parts if part.get("text"))
     if not text.strip():
-        raise GeminiError("AI থেকে খালি উত্তর এসেছে।")
+        raise GeminiError("The AI returned an empty response.")
     return text

@@ -312,12 +312,12 @@ class TestPromptVerbosity:
     def test_prompt_asks_for_short_output(self):
         prompt = self._prompt()
 
-        assert "ছোট" in prompt
-        assert "সর্বোচ্চ" in prompt
+        assert "short" in prompt
+        assert "at most" in prompt
 
     def test_prompt_keeps_the_safety_rules(self):
         prompt = self._prompt()
 
-        assert "সংখ্যা বা সীমা বদলাবেন না" in prompt
-        assert "রোগ নির্ণয় করবেন না" in prompt
-        assert "যাচাই করা" in prompt
+        assert "Do not change numbers or ranges" in prompt
+        assert "Do not diagnose" in prompt
+        assert "verified" in prompt

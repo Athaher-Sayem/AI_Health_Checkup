@@ -16,7 +16,7 @@ BACKEND_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BACKEND_DIR.parent
 
 #: Default token budget for one AI reply. A full CBC report has ~19 result rows
-#: and each row asks for three Bangla paragraphs, so the old hardcoded 2048
+#: and each row asks for three short paragraphs, so the old hardcoded 2048
 #: cut the answer off mid-object and broke the whole AI stage.
 DEFAULT_AI_MAX_TOKENS = 8192
 

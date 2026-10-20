@@ -43,8 +43,8 @@ MIN_LEGIBLE_CONFIDENCE = 55.0
 
 #: The user-facing explanation for a picture that is too small to read.
 LOW_RESOLUTION_WARNING = (
-    "ছবির রেজল্যুশন খুব কম, তাই রিপোর্টের লেখা ঠিকভাবে পড়া গেল না। "
-    "মূল ছবি অথবা অনেক বড় রেজল্যুশনের ছবি আপলোড করুন।"
+    "The image resolution is too low to read the report reliably. "
+    "Upload the original image or a higher-resolution copy."
 )
 
 # Tesseract is imported lazily so the app works without it installed.
@@ -209,7 +209,7 @@ def read_image(data: bytes) -> OcrReading:
         text, confidence = _paddle_ocr(image)
     else:
         raise OcrUnavailableError(
-            "Tesseract ইঞ্জিন ইনস্টল করা নেই (README দেখুন)"
+            "The Tesseract engine is not installed (see README)"
         )
 
     return OcrReading(
@@ -306,7 +306,7 @@ def _tesseract_ocr(
             except Exception as exc:
                 last_error = exc
         break
-    raise OcrUnavailableError("Tesseract দিয়ে লেখা পড়া যায়নি") from last_error
+    raise OcrUnavailableError("Tesseract could not read the text") from last_error
 
 
 def _paddle_ocr(image: Image.Image) -> tuple[str, float | None]:  # pragma: no cover

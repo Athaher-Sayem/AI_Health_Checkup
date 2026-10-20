@@ -199,7 +199,7 @@ class TestUnsupportedFiles:
             "/api/reports/upload", files={"file": (name, payload, "application/octet-stream")}
         )
         assert response.status_code == 400
-        assert "অসমর্থিত" in response.json()["detail"]
+        assert "Unsupported" in response.json()["detail"]
 
     def test_pdf_extension_with_wrong_content_is_rejected(self, client):
         """A .pdf that is really a zip must not slip through on name alone."""
@@ -208,7 +208,7 @@ class TestUnsupportedFiles:
             files={"file": ("fake.pdf", b"PK\x03\x04not a pdf", "application/pdf")},
         )
         assert response.status_code == 400
-        assert "পড়া যায়নি" in response.json()["detail"]
+        assert "could not be read" in response.json()["detail"]
 
 
 class TestCorruptedFiles:
@@ -251,7 +251,7 @@ class TestCorruptedFiles:
             files={"file": ("locked.pdf", encrypted, "application/pdf")},
         )
         assert response.status_code == 400
-        assert "পাসওয়ার্ড" in response.json()["detail"]
+        assert "password-protected" in response.json()["detail"]
 
 
 class TestTesseractConfiguration:

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ThemeProvider } from './context/ThemeContext.jsx'
 import { LocaleProvider } from './context/LocaleContext.jsx'
 import HomePage from './pages/HomePage.jsx'
@@ -20,9 +20,15 @@ export default function App() {
   const handleAnalyzed = useCallback(() => { setView('results') }, [])
   const handleReset = useCallback(() => { setReportId(null); setView('home') }, [])
 
+  useEffect(() => {
+    document.getElementById('main-content')?.focus({ preventScroll: true })
+    window.scrollTo(0, 0)
+  }, [view])
+
   return (
     <ThemeProvider>
       <LocaleProvider>
+        <a className="skip-link" href="#main-content">Skip to content</a>
         <Nav
           view={view}
           onHome={() => setView('home')}

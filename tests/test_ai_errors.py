@@ -17,9 +17,9 @@ def fake_urlopen(code):
 
 
 @pytest.mark.parametrize("code,expected", [
-    (402, "ক্রেডিট শেষ"),
-    (500, "সমস্যা হয়েছে"),
-    (503, "সমস্যা হয়েছে"),
+    (402, "credits have run out"),
+    (500, "encountered a problem"),
+    (503, "encountered a problem"),
 ])
 def test_an_http_status_is_explained(monkeypatch, code, expected):
     monkeypatch.setattr(

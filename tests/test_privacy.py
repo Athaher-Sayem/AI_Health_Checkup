@@ -179,8 +179,8 @@ class TestDisclaimerIsAlwaysPresent:
         report_id = upload_pdf(client, "Hemoglobin   10.2   g/dL   12 - 16\n")
         data = client.post("/api/reports/analyze", json={"report_id": report_id}).json()
 
-        assert "চিকিৎসকের" in data["summary"]["important_note"]
-        assert "রোগ নির্ণয় নয়" in data["summary"]["important_note"]
+        assert "doctor" in data["summary"]["important_note"]
+        assert "not a diagnosis" in data["summary"]["important_note"]
 
 
 class TestNoAlarmingLanguage:
@@ -200,4 +200,4 @@ class TestNoAlarmingLanguage:
         extraction = extract_tests(make_pages("Hemoglobin   10.2   g/dL   12 - 16\n"))
         results = validator.apply_validation(extraction.results)
 
-        assert results[0].status_bn in {"কম", "স্বাভাবিক", "বেশি", "স্বাভাবিক সীমার বাইরে", "নির্ধারণ করা যায়নি"}
+        assert results[0].status_bn in {"Low", "Normal", "High", "Outside range", "Unable to determine"}

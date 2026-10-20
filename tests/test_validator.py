@@ -33,7 +33,7 @@ class TestNormalResults:
         )
         assert results[0].value == 14.0
         assert results[0].status is ResultStatus.NORMAL
-        assert results[0].status_bn == "স্বাভাবিক"
+        assert results[0].status_bn == "Normal"
         assert counts.normal == 1
 
     def test_range_bounds_are_inclusive(self):
@@ -53,7 +53,7 @@ class TestLowValues:
         )
         assert results[0].value == 10.2
         assert results[0].status is ResultStatus.LOW
-        assert results[0].status_bn == "কম"
+        assert results[0].status_bn == "Low"
         assert counts.low == 1
         assert counts.normal == 0
 
@@ -72,7 +72,7 @@ class TestHighValues:
         )
         assert results[0].value == 1.4
         assert results[0].status is ResultStatus.HIGH
-        assert results[0].status_bn == "বেশি"
+        assert results[0].status_bn == "High"
         assert counts.high == 1
 
     def test_thousands_separator_is_parsed(self):
@@ -89,7 +89,7 @@ class TestMissingReferenceRange:
         assert results[0].value == 18.0
         assert results[0].reference is None
         assert results[0].status is ResultStatus.UNKNOWN
-        assert results[0].status_bn == "নির্ধারণ করা যায়নি"
+        assert results[0].status_bn == "Unable to determine"
         assert counts.unknown == 1
 
     def test_no_generic_range_is_substituted(self):
@@ -194,9 +194,9 @@ class TestCountsAndGroups:
         ) == counts.total
 
         groups = validator.group_results(results)
-        assert len(groups["স্বাভাবিক"]) == counts.normal
-        assert len(groups["সীমার বাইরে"]) == counts.outside
-        assert len(groups["নির্ধারণ করা যায়নি"]) == counts.unknown
+        assert len(groups["Normal"]) == counts.normal
+        assert len(groups["Outside range"]) == counts.outside
+        assert len(groups["Unable to determine"]) == counts.unknown
 
     def test_page_number_is_preserved(self):
         results, _ = analyse("Hemoglobin   10.2   g/dL   12 - 16\n")
