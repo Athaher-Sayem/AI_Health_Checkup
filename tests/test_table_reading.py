@@ -202,3 +202,16 @@ def test_operator_range_can_carry_a_printed_unit():
     result, = read("CRP\t10\tmg/L\t<5 mg/L")
     assert result.reference.raw_text == "<5 mg/L"
     assert result.status.value == "high"
+
+
+def test_qualitative_reference_cannot_erase_a_numeric_measurement():
+    result, = read("Urine Protein 30 mg/dL Negative")
+    assert result.test_name == "Urine Protein"
+    assert result.value == 30 and result.unit == "mg/dL"
+    assert result.status.value == "unknown"
+
+
+@pytest.mark.parametrize("bounds", ["4-11", "2-11"])
+def test_corrupt_result_cannot_advance_into_unit_exponents(bounds):
+    results = read(f"WBC 12O x10 3/cumm {bounds}")
+    assert not results or (results[0].value is None and results[0].status.value == "unknown")
