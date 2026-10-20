@@ -85,6 +85,14 @@ async def upload_report(file: UploadFile = File(...)) -> UploadResponse:
                 status_code=400,
                 detail="PDF ফাইলটি পড়া যায়নি। ফাইলটি ক্ষতিগ্রস্ত হতে পারে।",
             ) from None
+    else:
+        # An image whose bytes only look like an image is refused now, so the
+        # user finds out immediately instead of on the results screen.
+        try:
+            file_handler.verify_image(upload.path)
+        except file_handler.UploadError as exc:
+            upload.cleanup()
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     store.put(
         ReportRecord(
