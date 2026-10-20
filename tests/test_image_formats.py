@@ -52,8 +52,12 @@ def test_webp_upload_is_accepted(client):
 def test_webp_analysis_reads_the_image(client, no_ai, monkeypatch):
     monkeypatch.setattr(
         ocr,
-        "image_to_text",
-        lambda data: ("Haemoglobin 12.9 gm% 12-16gm%", 0.9),
+        "read_image",
+        lambda data: ocr.OcrReading(
+            text="Haemoglobin 12.9 gm% 12-16gm%",
+            confidence=0.9,
+            text_height_px=20.0,
+        ),
     )
     response = upload(
         client, "report.webp", build_image_bytes("WEBP"), "image/webp"

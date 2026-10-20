@@ -97,9 +97,13 @@ class TestScannedPdf:
 
         def fake_ocr(payload: bytes):
             calls["n"] += 1
-            return "Hemoglobin   10.2   g/dL   12 - 16", 0.91
+            return ocr.OcrReading(
+                text="Hemoglobin   10.2   g/dL   12 - 16",
+                confidence=0.91,
+                text_height_px=20.0,
+            )
 
-        monkeypatch.setattr(ocr, "image_to_text", fake_ocr)
+        monkeypatch.setattr(ocr, "read_image", fake_ocr)
 
         upload = file_handler.save_upload("scan.pdf", data)
         result = pdf_processor.extract_pdf(str(upload.path))
@@ -115,7 +119,7 @@ class TestScannedPdf:
         def raise_unavailable(payload: bytes):
             raise ocr.OcrUnavailableError("Tesseract ইঞ্জিন ইনস্টল করা নেই")
 
-        monkeypatch.setattr(ocr, "image_to_text", raise_unavailable)
+        monkeypatch.setattr(ocr, "read_image", raise_unavailable)
 
         document = pymupdf.open()
         page = document.new_page()
@@ -144,8 +148,12 @@ class TestImageReport:
 
     def test_image_analysis_reports_the_page(self, client, no_ai, monkeypatch):
         monkeypatch.setattr(
-            "backend.services.pipeline.ocr.image_to_text",
-            lambda payload: ("Hemoglobin   10.2   g/dL   12 - 16", 0.88),
+            "backend.services.pipeline.ocr.read_image",
+            lambda payload: ocr.OcrReading(
+                text="Hemoglobin   10.2   g/dL   12 - 16",
+                confidence=0.88,
+                text_height_px=20.0,
+            ),
         )
 
         response = client.post(
