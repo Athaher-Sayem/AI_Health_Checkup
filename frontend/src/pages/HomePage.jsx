@@ -6,6 +6,9 @@ import { uploadReport } from '../services/api.js'
 //: Used until the server reports which formats it accepts.
 const DEFAULT_TYPES = ['pdf', 'jpg', 'jpeg', 'png', 'webp']
 
+//: Used until the server reports which of them are read as images.
+const DEFAULT_IMAGE_TYPES = ['jpg', 'jpeg', 'png', 'webp']
+
 /** Escape a file type so it is safe inside a regular expression. */
 function escapePattern(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -35,20 +38,25 @@ export default function HomePage({ health, maxSizeMb, onUploaded }) {
   const inputRef = useRef(null)
   const objectUrl = useRef(null)
 
-  // The server owns the list of accepted formats, so the picker cannot drift
-  // away from what the API actually accepts.
-  const acceptedTypes =
-    health?.supported_types?.length ? health.supported_types : DEFAULT_TYPES
+  // The server owns the list of accepted formats and which of them are
+  // images, so the picker cannot drift away from what the API accepts.
+  const reported = Array.isArray(health?.supported_types)
+    ? health.supported_types.filter(
+        (type) => typeof type === 'string' && type.trim(),
+      )
+    : []
+  const acceptedTypes = reported.length ? reported : DEFAULT_TYPES
+  const reportedImages = Array.isArray(health?.image_types)
+    ? health.image_types.filter((type) => typeof type === 'string' && type.trim())
+    : []
+  const imageTypes = reportedImages.length ? reportedImages : DEFAULT_IMAGE_TYPES
   const accepted = acceptedTypes.map((type) => `.${type}`).join(',')
   const filePattern = new RegExp(
     `\\.(${acceptedTypes.map(escapePattern).join('|')})$`,
     'i',
   )
   const imagePattern = new RegExp(
-    `\\.(${acceptedTypes
-      .filter((type) => type !== 'pdf')
-      .map(escapePattern)
-      .join('|')})$`,
+    `\\.(${imageTypes.map(escapePattern).join('|')})$`,
     'i',
   )
 
