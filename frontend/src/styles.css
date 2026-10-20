@@ -1,4 +1,2 @@
 @import './styles/tokens.css';
-
-/* Legacy class aliases kept for minimal churn */
-.page { max-width: 720px; margin: 0 auto; padding: var(--space-8) var(--space-4) var(--space-12); }
+@import './styles/components.css';

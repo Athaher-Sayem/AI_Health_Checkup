@@ -32,19 +32,19 @@ export default function TestCard({ result, explanation }) {
       {explanation ? (
         <div className="test-explanation">
           {explanation.simple_explanation ? (
-            <div className="block">
+            <div>
               <h4>সহজ ব্যাখ্যা</h4>
               <p>{explanation.simple_explanation}</p>
             </div>
           ) : null}
           {explanation.general_information ? (
-            <div className="block">
+            <div>
               <h4>সাধারণ তথ্য</h4>
               <p>{explanation.general_information}</p>
             </div>
           ) : null}
           {explanation.cannot_determine ? (
-            <div className="block">
+            <div>
               <h4>যা নির্ধারণ করা যায়নি</h4>
               <p>{explanation.cannot_determine}</p>
             </div>
@@ -52,7 +52,9 @@ export default function TestCard({ result, explanation }) {
         </div>
       ) : null}
 
-      {result.raw_line ? <p className="test-raw">রিপোর্টের লেখা: “{result.raw_line}”</p> : null}
+      {result.raw_line ? (
+        <p className="test-raw">রিপোর্টের লেখা: “{result.raw_line}”</p>
+      ) : null}
     </article>
   )
 }

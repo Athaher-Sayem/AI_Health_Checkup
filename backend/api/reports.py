@@ -15,6 +15,7 @@ import logging
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 import fitz  # PyMuPDF
 
@@ -125,7 +126,9 @@ async def analyze_report(payload: AnalyzeRequest) -> AnalyzeResponse:
         )
 
     try:
-        analyzed = pipeline.analyze_upload(upload)
+        # The AI stage can take tens of seconds, so it runs in a worker thread
+        # and the event loop keeps serving other requests meanwhile.
+        analyzed = await run_in_threadpool(pipeline.analyze_upload, upload)
     except pdf_processor.PdfProcessingError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception:

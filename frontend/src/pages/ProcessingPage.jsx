@@ -10,7 +10,7 @@ const STEPS = [
 
 export default function ProcessingPage({ reportId, onDone, onFailed, onCancel }) {
   const [activeStep, setActiveStep] = useState(0)
-  const [progress, setProgress] = useState(8)
+  const [progress, setProgress] = useState(6)
   const [error, setError] = useState(null)
   const started = useRef(false)
 
@@ -21,19 +21,24 @@ export default function ProcessingPage({ reportId, onDone, onFailed, onCancel })
     let cancelled = false
     const stepTimer = setInterval(() => {
       setActiveStep((prev) => (prev < STEPS.length - 1 ? prev + 1 : prev))
-    }, 1200)
-    const progTimer = setInterval(() => {
-      setProgress((p) => (p < 92 ? p + Math.random() * 6 : p))
-    }, 400)
+    }, 1500)
+
+    // Creeps toward 90% and waits for the real response to finish the job.
+    const progressTimer = setInterval(() => {
+      setProgress((p) => (p < 90 ? p + (90 - p) * 0.08 : p))
+    }, 350)
 
     analyzeReport(reportId)
       .then(() => {
-        clearInterval(stepTimer); clearInterval(progTimer)
+        clearInterval(stepTimer)
+        clearInterval(progressTimer)
         setProgress(100)
-        if (!cancelled) setTimeout(onDone, 300)
+        setActiveStep(STEPS.length)
+        if (!cancelled) setTimeout(onDone, 350)
       })
       .catch((err) => {
-        clearInterval(stepTimer); clearInterval(progTimer)
+        clearInterval(stepTimer)
+        clearInterval(progressTimer)
         if (cancelled) return
         setError(err.message)
       })
@@ -41,60 +46,72 @@ export default function ProcessingPage({ reportId, onDone, onFailed, onCancel })
     return () => {
       cancelled = true
       clearInterval(stepTimer)
-      clearInterval(progTimer)
+      clearInterval(progressTimer)
     }
   }, [reportId, onDone])
 
   if (error) {
     return (
-      <main className="page">
-        <h1>রিপোর্ট বিশ্লেষণ করা যায়নি</h1>
-        <p className="error">{error}</p>
-        <button className="button" onClick={onFailed}>আবার চেষ্টা করুন</button>
+      <main className="shell">
+        <div className="empty-state" style={{ paddingTop: 'var(--space-16)' }}>
+          <h2>রিপোর্ট বিশ্লেষণ করা যায়নি</h2>
+          <p className="error-text" style={{ marginTop: 'var(--space-3)' }}>
+            {error}
+          </p>
+          <div className="btn-row" style={{ justifyContent: 'center' }}>
+            <button type="button" className="btn btn--primary" onClick={onFailed}>
+              আবার চেষ্টা করুন
+            </button>
+            <button type="button" className="btn btn--secondary" onClick={onCancel}>
+              ফিরে যান
+            </button>
+          </div>
+        </div>
       </main>
     )
   }
 
   return (
-    <main className="page">
-      <h1>রিপোর্ট বিশ্লেষণ করা হচ্ছে…</h1>
-      <div style={{
-        height: 8, background: 'var(--surface-2)', borderRadius: 999,
-        overflow: 'hidden', margin: 'var(--space-4) 0 var(--space-6)',
-      }}>
-        <div style={{
-          height: '100%', width: progress + '%',
-          background: 'var(--accent)', borderRadius: 999,
-          transition: 'width 300ms ease-out',
-        }} />
+    <main className="shell">
+      <header className="hero" style={{ paddingBottom: 'var(--space-4)' }}>
+        <h1>রিপোর্ট বিশ্লেষণ করা হচ্ছে…</h1>
+      </header>
+
+      <div className="progress" role="status" aria-live="polite">
+        <div className="progress-track">
+          <div className="progress-fill" style={{ width: `${progress}%` }} />
+        </div>
+        <div className="progress-meta">
+          <span>{STEPS[Math.min(activeStep, STEPS.length - 1)]}</span>
+          <span className="progress-percent">{Math.round(progress)}%</span>
+        </div>
       </div>
-      <ul className="steps" style={{ listStyle: 'none', padding: 0 }}>
+
+      <ul className="steps">
         {STEPS.map((step, index) => (
           <li
             key={step}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
-              padding: 'var(--space-2) 0',
-              color: index <= activeStep ? 'var(--text)' : 'var(--text-muted)',
-            }}
+            className={
+              index < activeStep
+                ? 'step step--done'
+                : index === activeStep
+                  ? 'step step--active'
+                  : 'step'
+            }
           >
-            <span style={{
-              width: 22, height: 22, borderRadius: '50%',
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 'var(--fs-12)', fontWeight: 600,
-              background: index < activeStep ? 'var(--accent)' : 'var(--surface-2)',
-              color: index < activeStep ? '#fff' : 'var(--text-muted)',
-              border: '1px solid var(--border)',
-            }}>
+            <span className="step-mark" aria-hidden="true">
               {index < activeStep ? '✓' : index + 1}
             </span>
             {step}
           </li>
         ))}
       </ul>
-      <button className="button button--ghost" onClick={onCancel} style={{ marginTop: 'var(--space-4)' }}>
-        বাতিল করুন
-      </button>
+
+      <div className="btn-row">
+        <button type="button" className="btn btn--ghost" onClick={onCancel}>
+          বাতিল করুন
+        </button>
+      </div>
     </main>
   )
 }

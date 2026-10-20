@@ -4,6 +4,7 @@ export default function SummaryCard({ summary, counts }) {
   return (
     <section className="summary">
       <h2 className="summary-title">{summary.headline}</h2>
+
       <div className="summary-counts">
         <div className="count count--normal">
           <span className="count-value">{counts?.normal ?? 0}</span>
@@ -31,7 +32,9 @@ export default function SummaryCard({ summary, counts }) {
         </ul>
       ) : null}
 
-      <p className="summary-note">{summary.important_note}</p>
+      {summary.important_note ? (
+        <p className="summary-note">{summary.important_note}</p>
+      ) : null}
     </section>
   )
 }

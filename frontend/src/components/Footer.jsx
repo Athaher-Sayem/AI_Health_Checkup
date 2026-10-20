@@ -1,21 +1,19 @@
 export default function Footer() {
   return (
-    <footer style={{
-      marginTop: 'var(--space-12)',
-      padding: 'var(--space-6)',
-      borderTop: '1px solid var(--border)',
-      color: 'var(--text-muted)',
-      fontSize: 'var(--fs-12)',
-      textAlign: 'center',
-    }}>
-      <div style={{ marginBottom: 'var(--space-2)' }}>
-        © {new Date().getFullYear()} AI Medical Report Explainer
-      </div>
-      <div>
-        Athaher Sayem · <a href="mailto:athahersayemfahim@gmail.com">athahersayemfahim@gmail.com</a>
-      </div>
-      <div style={{ marginTop: 'var(--space-2)' }}>
-        Not a medical device. Consult a qualified clinician.
+    <footer className="footer">
+      <div className="footer-inner">
+        <div className="footer-brand">AI Medical Report Explainer</div>
+
+        <div className="footer-contact">
+          <span>Athaher Sayem</span>
+          <span className="footer-dot" aria-hidden="true" />
+          <a href="mailto:athahersayemfahim@gmail.com">athahersayemfahim@gmail.com</a>
+        </div>
+
+        <p className="footer-legal">
+          এই অ্যাপটি একটি শিক্ষামূলক টুল। এটি কোনো রোগ নির্ণয় বা চিকিৎসার বিকল্প নয়।
+          চিকিৎসা সংক্রান্ত সিদ্ধান্তের জন্য যোগ্য চিকিৎসকের পরামর্শ নিন।
+        </p>
       </div>
     </footer>
   )
