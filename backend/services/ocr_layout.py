@@ -35,9 +35,13 @@ _METADATA = re.compile(
 # near-miss allowance).
 _HEADER_OPTIONS = (
     ("test", "tests", "testname"),
-    ("result", "results"),
+    # Reports label the measurement column in more than one way. A heading
+    # that is not recognised leaves one column unanchored, which rejects the
+    # whole table, so the common names all belong here.
+    ("result", "results", "value", "values"),
     ("unit", "units"),
-    ("reference", "referencerange", "referenceinterval", "biorefinterval", "refinterval"),
+    ("reference", "referencerange", "referenceinterval", "biorefinterval",
+     "refinterval", "normalrange"),
 )
 # Every heading of the other three columns, per kind. A token that already
 # contains one of them is two headings read together, not one misread heading.
@@ -287,8 +291,54 @@ def _safe_name(words: list[_Word]) -> bool:
     return bool(
         words and any(char.isalpha() for char in name) and len(name) <= 100
         and len(name.split()) <= 12 and not _METADATA.match(name)
-        and not re.search(r"[,;:!?]|\b(?:these|help|originate|infections|throughout)\b", name, re.I)
+        and not re.search(r"[;:!?]|\b(?:these|help|originate|infections|throughout)\b", name, re.I)
+        # A comma belongs inside a test name ("HEMATOCRIT VALUE, HCT"), but in
+        # a sentence it marks prose that was never a test row. A short name
+        # with a comma is a name; a long one is a sentence.
+        and ("," not in name or len(name.split()) <= 6)
     )
+
+
+def _value_like(word: _Word) -> bool:
+    """Is this word something a measurement cell holds?
+
+    A number, a comparator or separator that belongs to a number, or a
+    qualitative result. A test name is none of these, so the name column
+    cannot be mistaken for the value column.
+    """
+    text = word.text.strip()
+    if not text:
+        return False
+    if _NUMBER.match(text):
+        return True
+    if text in {"<", ">", "<=", ">=", "≥", "≤", ".", ","}:
+        return True
+    return text.lower() in _QUALITATIVE
+
+
+def _value_column_left(body: list[_Word], anchor: _Word, height: float) -> float | None:
+    """Where the value column really starts, taken from the data.
+
+    A column of measurements sits under its heading: either left-aligned with
+    it or right-aligned against it, and the measurements themselves say
+    which. The headings alone cannot: a long test name reaches further right
+    than the gap between two headings, and a boundary drawn across that gap
+    cuts the name in half and loses the whole row.
+
+    Only words a measurement cell can hold are considered, so a long name
+    that happens to sit near the heading cannot move the column.
+    """
+    slack = 2.0 * height
+    candidates = [
+        word
+        for word in body
+        if _value_like(word)
+        and (abs(word.left - anchor.left) <= slack
+             or abs(word.right - anchor.right) <= slack)
+    ]
+    if not candidates:
+        return None
+    return min(word.left for word in candidates)
 
 
 def table_text(data: object, verify_cell: CellVerifier | None = None) -> str | None:
@@ -313,14 +363,19 @@ def table_text(data: object, verify_cell: CellVerifier | None = None) -> str | N
     if header is None:
         return None
     anchors, header_y = header
+    body = [word for word in words if word.cy > header_y + tolerance]
+    # Where the value column begins is decided by the measurements in it, so a
+    # long test name is not cut in half by a line drawn between two headings.
+    value_left = _value_column_left(body, anchors[1], height)
+    if value_left is None or value_left > anchors[1].right:
+        value_left = (anchors[0].left + anchors[1].left) / 2
     # Results may be right-aligned, units left-aligned and longer than their
     # heading. Allow 1.5 word-heights of leftward skew at the latter anchors.
-    boundaries = [(anchors[0].left + anchors[1].left) / 2,
+    boundaries = [value_left,
                   anchors[2].left - 1.5 * height, anchors[3].left - 1.5 * height]
     if (boundaries != sorted(boundaries)
             or anchors[1].right > boundaries[1] or anchors[2].right > boundaries[2]):
         return None
-    body = [word for word in words if word.cy > header_y + tolerance]
     footer_y = min((min(word.cy for word in row) for row in _rows(body, tolerance)
                     if _FOOTER.match(_text(row))), default=math.inf)
     body = [word for word in body if word.cy < footer_y]
