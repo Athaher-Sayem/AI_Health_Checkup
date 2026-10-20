@@ -16,11 +16,14 @@ from __future__ import annotations
 
 import io
 import logging
+import math
 import os
+import subprocess
 
 from PIL import Image, ImageOps
 
 from backend.config import get_settings
+from backend.services.ocr_layout import CellVerifier, corroborates_cell, has_table_header, table_text
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +51,10 @@ def _tesseract_binary_present() -> bool:
         return False
     _apply_tesseract_path()
     try:  # pragma: no cover - environment dependent
-        pytesseract.get_tesseract_version()
+        subprocess.run(
+            [pytesseract.pytesseract.tesseract_cmd, "--version"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=20,
+        )
         return True
     except Exception:
         return False
@@ -91,12 +97,17 @@ def _paddle_available() -> bool:  # pragma: no cover - optional dependency
 def preprocess_image(data: bytes) -> Image.Image:
     """Prepare an image for OCR.
 
-    Steps: load, EXIF-orient, convert to greyscale, autocontrast. Autocontrast
+    Steps: load, EXIF-orient, bounded 2x resize, greyscale, autocontrast. Autocontrast
     helps faint printed text without altering the underlying numbers beyond
     contrast normalisation.
     """
-    image = Image.open(io.BytesIO(data))
-    image = ImageOps.exif_transpose(image)
+    with Image.open(io.BytesIO(data)) as source:
+        image = ImageOps.exif_transpose(source)
+    scale = min(2.0, 2400 / max(image.size),
+                math.sqrt(6_000_000 / (image.width * image.height)))
+    size = (max(1, int(image.width * scale)), max(1, int(image.height * scale)))
+    if size != image.size:
+        image = image.resize(size, Image.Resampling.LANCZOS)
     if image.mode != "L":
         image = image.convert("L")
     image = ImageOps.autocontrast(image)
@@ -124,26 +135,76 @@ def image_to_text(data: bytes) -> tuple[str, float | None]:
     )
 
 
-def _tesseract_ocr(image: Image.Image, languages: list[str]) -> tuple[str, float | None]:
-    """Run Tesseract, tolerating missing language data files."""
-    _apply_tesseract_path()
-    candidates = [lang for lang in languages if lang] or ["eng"]
+def _cell_verifier(image: Image.Image, language: str) -> CellVerifier:
+    """Share a four-call/20-second extra budget across same-cell rereads."""
+    remaining = 4
 
+    def verify(tokens, bounds):
+        nonlocal remaining
+        if remaining <= 0 or not tokens:
+            return False
+        padding = min(word.height for word in tokens) * .25
+        left, top, right, bottom = bounds
+        box = (
+            max(0, math.ceil(left), math.floor(min(word.left for word in tokens) - padding)),
+            max(0, math.ceil(top), math.floor(min(word.top for word in tokens) - padding)),
+            min(image.width, math.floor(right) if math.isfinite(right) else image.width,
+                math.ceil(max(word.right for word in tokens) + padding)),
+            min(image.height, math.floor(bottom) if math.isfinite(bottom) else image.height,
+                math.ceil(max(word.top + word.height for word in tokens) + padding)),
+        )
+        if box[0] >= box[2] or box[1] >= box[3]:
+            return False
+        remaining -= 1  # Failed/timed-out calls still consume their allocation.
+        try:
+            with image.crop(box) as crop:
+                data = pytesseract.image_to_data(
+                    crop, lang=language, config="--psm 7",
+                    output_type=pytesseract.Output.DICT, timeout=5,
+                )
+            return corroborates_cell(tokens, data)
+        except Exception:
+            return False
+
+    return verify
+
+
+def _tesseract_ocr(image: Image.Image, languages: list[str]) -> tuple[str, float | None]:
+    """Use at most three base OCR calls (20s each), plus four cell rereads (5s).
+
+    Language packs are combined, with one English-only fallback. Only exact
+    same-cell corroboration can promote low-confidence primary characters.
+    """
+    _apply_tesseract_path()
+    combined = "+".join(dict.fromkeys(lang for lang in languages if lang)) or "eng"
+    candidates = list(dict.fromkeys((combined, "eng")))
     last_error: Exception | None = None
     for lang in candidates:
         try:
-            text = pytesseract.image_to_string(image, lang=lang)
-            return _tidy(text), None
+            data = pytesseract.image_to_data(
+                image, lang=lang, config="--psm 11",
+                output_type=pytesseract.Output.DICT, timeout=20,
+            )
         except Exception as exc:  # language pack missing, etc.
             last_error = exc
-            logger.debug("Tesseract lang %s failed: %s", lang, exc)
-
-    # Fall back to plain English if the requested packs are not installed.
-    try:
-        text = pytesseract.image_to_string(image, lang="eng")
-        return _tidy(text), None
-    except Exception as exc:  # pragma: no cover - environment dependent
-        raise OcrUnavailableError("Tesseract দিয়ে লেখা পড়া যায়নি") from exc
+            logger.debug("Tesseract layout unavailable for language %s", lang)
+            continue
+        text = table_text(data, verify_cell=_cell_verifier(image, lang))
+        if text is not None or has_table_header(data):
+            # Do not strip trailing tabs: an empty fourth cell still owns its
+            # position. Never reinterpret a recognized but rejected table.
+            return text or "", None
+        for plain_lang in dict.fromkeys((lang, "eng")):
+            try:
+                text = pytesseract.image_to_string(
+                    image, lang=plain_lang,
+                    config="--psm 3 -c preserve_interword_spaces=1", timeout=20,
+                )
+                return _tidy(text), None
+            except Exception as exc:
+                last_error = exc
+        break
+    raise OcrUnavailableError("Tesseract দিয়ে লেখা পড়া যায়নি") from last_error
 
 
 def _paddle_ocr(image: Image.Image) -> tuple[str, float | None]:  # pragma: no cover
