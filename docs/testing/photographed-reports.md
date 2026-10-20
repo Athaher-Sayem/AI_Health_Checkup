@@ -100,9 +100,28 @@ The linked example image is a `.webp` file. Before this change the server
 answered "unsupported file type" and the browser's file picker hid the file,
 so the report could not be uploaded at all.
 
+Three further rules apply, each with a regression test:
+
+- **The format comes from the client's own name, not the display name.** The
+  display name is sanitised for echoing back, and that sanitising used to
+  remove a leading non-ASCII run. A file named `রোগীর রিপোর্ট.webp` therefore
+  lost its extension and was refused as an unsupported type. The format is now
+  read from the raw name, and the sanitised name is only a display label.
+- **An image must actually open.** The container check proves the bytes look
+  like an image; the upload handler also decodes it. A truncated PNG or a
+  WebP header over a broken body is refused at upload with a clear message,
+  instead of failing later on the results screen with a 422.
+- **A display name cannot disguise its extension.** Letters, digits and
+  combining marks from any script survive in the echoed name, while path
+  separators, control characters and bidirectional overrides are replaced.
+
+The frontend reads the accepted list from `/api/health` instead of repeating
+it, so the file picker cannot drift away from what the API accepts.
+
 Verification: `tests/test_image_formats.py` covers WebP acceptance, WebP
 analysis, a renamed PNG rejected as `.webp`, a non-WebP RIFF container
-rejected, and JPEG/PNG staying accepted.
+rejected, JPEG/PNG staying accepted, Bangla filenames, undecodable images,
+and the display-name rules.
 
 ## Limits
 
