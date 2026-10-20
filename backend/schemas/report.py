@@ -215,3 +215,6 @@ class HealthResponse(BaseModel):
     ai_configured: bool
     max_upload_size_mb: int
     supported_types: list[str]
+    #: The subset of ``supported_types`` that is read as an image, so the
+    #: interface does not have to guess how the server reads a file.
+    image_types: list[str] = []
