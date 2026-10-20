@@ -563,7 +563,12 @@ def _valid_name(name: str) -> bool:
 def _valid_unit(text: str) -> bool:
     """Recognize complete units, including count scales containing digits."""
     normalized = text.strip().lower().replace("μ", "µ")
-    if normalized in _KNOWN_UNITS or normalized in {"gm%", "/cumm", "/cu.mm", "/ul", "/µl", "cells/µl", "pg/ml"}:
+    if normalized in _KNOWN_UNITS or normalized in {
+        "gm%", "/cumm", "/cu.mm", "/ul", "/µl", "cells/µl", "pg/ml",
+        # A count per cubic micromillimetre, and the lakh scale some reports
+        # print for it.
+        "cumm", "lakhs/cumm", "lakh/cumm",
+    }:
         return True
     return bool(re.fullmatch(
         r"(?:million|thousand|cells)\s*/\s*(?:cu\s*mm|cumm|mm3|[uµ]l)|"
@@ -623,6 +628,9 @@ def _extract_candidate_from_line(line: str, page: int) -> _Candidate | None:
         return None
 
     name = _clean_name(name_cell)
+    # A report often prints its verdict marker right after the test name
+    # ("LYMPHOCYTE L"). The marker is a verdict, not part of the name.
+    name, flag_text = _strip_trailing_flag(name)
     rest = cells[1:]
     explicit = "\t" in line and len(cells) == 4
     if not explicit and (
@@ -683,7 +691,7 @@ def _extract_candidate_from_line(line: str, page: int) -> _Candidate | None:
         raw_line=line.strip(),
         page=page,
         qualitative=qualitative,
-        flag_text=None,
+        flag_text=flag_text,
     )
 
 
