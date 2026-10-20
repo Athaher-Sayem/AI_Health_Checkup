@@ -109,10 +109,15 @@ def _similar_header_token(token: str, option: str, foreign: tuple[str, ...]) -> 
 
     * boundary similarity - the same first two characters, the same last
       character, and lengths differing by at most 3
-      ("reams"/"results", "unt"/"unit", "referance"/"reference"); or
+      ("reams"/"results", "unt"/"unit"); or
     * edit similarity - a Levenshtein distance of at most 2 between two
       tokens that are both at least 5 characters long
-      ("refernce"/"reference", "resit"/"result").
+      ("referance"/"reference", "resit"/"result").
+
+    The boundary rule needs the lengths to differ. A same-length word that
+    merely ends the same way is a different word, not a misread: "Text" is
+    not "Test", and treating it as the test column would swallow a page of
+    prose that happens to mention results and units.
 
     ``foreign`` holds every heading of the other three columns. A token that
     already contains one of them is two headings read together (such as
@@ -123,6 +128,7 @@ def _similar_header_token(token: str, option: str, foreign: tuple[str, ...]) -> 
     if any(other in token for other in foreign):
         return False
     if (len(token) >= 2 and len(option) >= 2
+            and len(token) != len(option)
             and token[:2] == option[:2] and token[-1] == option[-1]
             and abs(len(token) - len(option)) <= 3):
         return True
