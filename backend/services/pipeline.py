@@ -62,10 +62,13 @@ def _read_document(upload: TempUpload) -> tuple[list[PageText], DocumentKind, li
         warnings.append(f"ছবির লেখা পড়া যায়নি ({exc})।")
         text, confidence = "", None
     else:
-        if reading.text_height_px is not None and not reading.is_legible:
-            # The picture was too small to read. Say so, instead of letting
-            # invented rows look like results.
+        if (
+            reading.text_height_px is not None or reading.word_confidence is not None
+        ) and not reading.is_legible:
+            # The picture was too small to read. Say so, and do not report
+            # what could not be read.
             warnings.append(ocr.LOW_RESOLUTION_WARNING)
+            text, confidence = "", None
 
     if not text.strip():
         warnings.append("ছবিতে কোনো লেখা পড়া যায়নি।")
@@ -77,16 +80,19 @@ def _read_document(upload: TempUpload) -> tuple[list[PageText], DocumentKind, li
 def _explain(results, meta: ExtractionMeta):
     """Run the AI explanation stage.
 
-    Returns ``(explanations, validation_report, ai_enabled, ai_error)``.
+    Returns ``(explanations, validation_report, ai_enabled, ai_error,
+    ai_notice)``. A notice says the AI answered but not for every result; an
+    error says it could not be used at all.
     """
     if not results:
-        return [], medical_explainer.empty_validation(results), False, None
+        return [], medical_explainer.empty_validation(results), False, None, None
     if not get_settings().has_ai_key:
         return (
             [],
             medical_explainer.empty_validation(results, checked=False),
             False,
             "AI ব্যাখ্যার জন্য API key সেট করা নেই।",
+            None,
         )
 
     prompt = medical_explainer.build_user_prompt(results)
@@ -102,6 +108,7 @@ def _explain(results, meta: ExtractionMeta):
                 medical_explainer.empty_validation(results, checked=False),
                 True,
                 str(exc),
+                None,
             )
 
         messages, contradicted = medical_explainer.detect_contradictions(results, parsed)
@@ -112,7 +119,7 @@ def _explain(results, meta: ExtractionMeta):
             validation = medical_explainer.empty_validation(results, checked=True)
             validation.contradictions = collected
             validation.repaired = attempt > 0
-            return blocks, validation, True, None
+            return blocks, validation, True, None, _partial_notice(blocks)
 
         # The model disagreed with our verified status. Keep our value, record
         # the conflict, and try once more with the status made explicit.
@@ -122,7 +129,7 @@ def _explain(results, meta: ExtractionMeta):
             validation = medical_explainer.empty_validation(results, checked=True)
             validation.contradictions = collected
             validation.repaired = attempt > 0
-            return [], validation, True, None
+            return [], validation, True, None, None
 
         prompt = medical_explainer.build_user_prompt(results) + _REGENERATION_HINT
 
@@ -131,7 +138,21 @@ def _explain(results, meta: ExtractionMeta):
         medical_explainer.empty_validation(results, checked=True),
         True,
         None,
+        None,
     )
+
+
+def _partial_notice(blocks) -> str | None:
+    """Say so when the model answered for only some of the results.
+
+    A reply that was cut off still carries the explanations it did finish, so
+    it is not an error - but the missing ones must not look explained.
+    """
+    missing = sum(1 for block in blocks if not block.simple_explanation)
+    if not missing:
+        return None
+    count = str(missing).translate(str.maketrans("0123456789", "০১২৩৪৫৬৭৮৯"))
+    return f"AI ব্যাখ্যাটি অসম্পূর্ণ: {count}টি পরীক্ষার ব্যাখ্যা পাওয়া যায়নি।"
 
 
 def analyze_upload(upload: TempUpload) -> ReportRecord:
@@ -163,7 +184,7 @@ def analyze_upload(upload: TempUpload) -> ReportRecord:
         warnings=warnings,
     )
 
-    explanations, validation, ai_enabled, ai_error = _explain(results, meta)
+    explanations, validation, ai_enabled, ai_error, ai_notice = _explain(results, meta)
 
     summary = report_summary.build_summary(results, counts)
 
@@ -180,6 +201,7 @@ def analyze_upload(upload: TempUpload) -> ReportRecord:
         validation=validation,
         ai_enabled=ai_enabled,
         ai_error=ai_error,
+        ai_notice=ai_notice,
         pages=pages,
     )
 
