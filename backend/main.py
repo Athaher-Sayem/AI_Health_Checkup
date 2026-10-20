@@ -55,4 +55,9 @@ def health() -> HealthResponse:
         supported_types=sorted(
             extension[1:] for extension in file_handler.SUPPORTED_EXTENSIONS
         ),
+        image_types=sorted(
+            extension[1:]
+            for extension in file_handler.SUPPORTED_EXTENSIONS
+            if extension not in file_handler.DOCUMENT_EXTENSIONS
+        ),
     )
